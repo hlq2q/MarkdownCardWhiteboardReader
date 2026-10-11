@@ -1,0 +1,7 @@
+# Keep LF in the working tree and the repository; Windows tools cope fine.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.whl binary
