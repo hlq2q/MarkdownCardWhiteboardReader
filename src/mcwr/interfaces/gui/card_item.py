@@ -3,6 +3,11 @@
 Geometry comes from the domain (`CardLayout`, absolute whiteboard coordinates); this
 module converts to Qt's local coordinates only when applying a layout, and converts
 back on drop. Moving a card therefore moves its attached children for free.
+
+Every colour, font size and metric comes from :mod:`mcwr.interfaces.gui.theme`, which
+implements ``docs/visual-spec.md`` — there is no literal colour in this file. A theme
+switch calls :meth:`CardItem.set_palette`, which re-styles the card's own text document and
+repaints: it never rebuilds the item and never touches a ``CardLayout`` (T-024 acceptance ③).
 """
 
 from __future__ import annotations
@@ -10,9 +15,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextDocument
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QPainter,
+    QPen,
+    QPixmap,
+    QTextDocument,
+)
 from PySide6.QtWidgets import (
     QGraphicsObject,
+    QGraphicsSceneHoverEvent,
     QGraphicsSceneMouseEvent,
     QStyle,
     QStyleOptionGraphicsItem,
@@ -21,24 +35,25 @@ from PySide6.QtWidgets import (
 
 from mcwr.domain.enums import CardKind
 from mcwr.domain.models import Block, Card, CardLayout
-
-HEADER_HEIGHT = 34.0
-PADDING = 12.0
-RADIUS = 8.0
-MIN_BODY_HEIGHT = 24.0
-
-ACCENT: dict[CardKind, str] = {
-    CardKind.BIG_SECTION: "#4a5568",
-    CardKind.HEADING: "#2b6cb0",
-    CardKind.CODE: "#2f855a",
-    CardKind.TABLE: "#805ad5",
-    CardKind.MATH_BLOCK: "#b7791f",
-    CardKind.MERMAID: "#0987a0",
-    CardKind.IMAGE: "#c05621",
-    CardKind.TASK_LIST: "#6b46c1",
-    CardKind.TOC: "#718096",
-    CardKind.FALLBACK_TEXT: "#a0aec0",
-}
+from mcwr.interfaces.gui.theme import (
+    BORDER_WIDTH,
+    CARD_RADIUS,
+    CODE_FONT,
+    CODE_FONT_FALLBACK,
+    FONT_PX,
+    HEADER_HEIGHT,
+    LIGHT,
+    MIN_BODY_HEIGHT,
+    PADDING,
+    SELECTED_WIDTH,
+    SHADOW_RGBA,
+    UI_FONT,
+    UI_FONT_FALLBACK,
+    Palette,
+    card_fill,
+    points,
+    uses_shadow,
+)
 
 KIND_GLYPH: dict[CardKind, str] = {
     CardKind.BIG_SECTION: "§",
@@ -52,6 +67,7 @@ KIND_GLYPH: dict[CardKind, str] = {
     CardKind.TOC: "≡",
     CardKind.FALLBACK_TEXT: "¶",
 }
+"""Card type is carried by a glyph, never by colour alone (visual spec §6)."""
 
 
 class CardItem(QGraphicsObject):
@@ -66,13 +82,18 @@ class CardItem(QGraphicsObject):
         blocks: Mapping[int, Block],
         layout: CardLayout,
         image: QPixmap | None = None,
+        palette: Palette = LIGHT,
     ) -> None:
         super().__init__()
         self.card = card
         self.layout_state = layout
-        self._document = _build_document(card, blocks)
+        self._blocks = blocks
+        self._palette = palette
+        self._document = _build_document(card, blocks, palette)
         self._image = image
         self._pending = False
+        self._hovered = False
+        self._dragging = False
         self._width = max(layout.width, 120.0)
         self._height = max(layout.height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, True)
@@ -101,6 +122,11 @@ class CardItem(QGraphicsObject):
     def card_height(self) -> float:
         return self._height
 
+    @property
+    def visual_palette(self) -> Palette:
+        """The palette this item currently paints with (read-only view for tests)."""
+        return self._palette
+
     def body_rect(self) -> QRectF:
         return QRectF(
             PADDING,
@@ -111,11 +137,25 @@ class CardItem(QGraphicsObject):
 
     # ------------------------------------------------------------------- painting
 
+    def set_palette(self, palette: Palette) -> None:
+        """Switch this card's colours for a new theme (T-024 ③).
+
+        Only the drawing changes: the card's text document is re-styled (fonts and code
+        colours are baked into it) and the item repaints. No geometry, no layout field and
+        no card identity is touched, and the board is never rebuilt.
+        """
+        if palette.theme is self._palette.theme:
+            return
+        self._palette = palette
+        self._document = _build_document(self.card, self._blocks, palette)
+        self.update()
+
     def set_image(self, image: QPixmap | None) -> None:
         """Show an offscreen-rendered body (math / mermaid), or fall back to the text.
 
         Rendering happens outside the paint path (decision D14), so the canvas only ever
-        draws a static pixmap and stays smooth while the board is transformed.
+        draws a static pixmap and stays smooth while the board is transformed. The image is
+        theme-specific as well (visual spec §5), so a switch clears it and re-queues.
         """
         self._image = image
         self.update()
@@ -147,25 +187,31 @@ class CardItem(QGraphicsObject):
         widget: QWidget | None = None,
     ) -> None:
         del widget
+        palette = self._palette
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
-        accent = QColor(ACCENT.get(self.card.kind, "#718096"))
-        frame = QRectF(0.5, 0.5, self._width - 1.0, self._height - 1.0)
+        fill = QColor(self._fill(palette))
+        frame = QRectF(
+            BORDER_WIDTH / 2.0,
+            BORDER_WIDTH / 2.0,
+            self._width - BORDER_WIDTH,
+            self._height - BORDER_WIDTH,
+        )
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor("#ffffff")))
-        painter.drawRoundedRect(frame, RADIUS, RADIUS)
+        if uses_shadow(palette.theme):
+            painter.setBrush(QBrush(QColor(*SHADOW_RGBA)))
+            painter.drawRoundedRect(frame.translated(0.0, 1.0), CARD_RADIUS, CARD_RADIUS)
+
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
 
         header = QRectF(frame.left(), frame.top(), frame.width(), HEADER_HEIGHT)
-        painter.setBrush(QBrush(accent.lighter(190)))
-        painter.drawRoundedRect(header, RADIUS, RADIUS)
-        painter.drawRect(QRectF(header.left(), header.bottom() - RADIUS, header.width(), RADIUS))
-
-        painter.setPen(QPen(accent.darker(140)))
+        painter.setPen(QPen(QColor(palette.border), BORDER_WIDTH))
         painter.drawLine(
             QPointF(frame.left(), header.bottom()), QPointF(frame.right(), header.bottom())
         )
-        _draw_header_text(painter, header, self.card)
+        _draw_header_text(painter, header, self.card, palette)
 
         painter.save()
         painter.setClipRect(self.body_rect())
@@ -173,21 +219,42 @@ class CardItem(QGraphicsObject):
             _draw_body_image(painter, self.body_rect(), self._image)
         else:
             painter.translate(self.body_rect().topLeft())
+            painter.setPen(QPen(QColor(palette.text_primary)))
             self._document.setTextWidth(self.body_rect().width())
             self._document.drawContents(
                 painter, QRectF(0, 0, self.body_rect().width(), 1e6)
             )
         painter.restore()
 
-        border = QColor("#2d3748") if selected else accent
+        # Selection is a thicker border *and* another colour, never colour alone (§6).
+        edge = QColor(palette.selected) if selected else QColor(palette.card_edge)
+        width = SELECTED_WIDTH if selected else BORDER_WIDTH
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(border, 2.5 if selected else 1.0))
-        painter.drawRoundedRect(frame, RADIUS, RADIUS)
+        painter.setPen(QPen(edge, width))
+        painter.drawRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
 
         if self._pending and not self.has_image:
-            _draw_pending_badge(painter, header)
+            _draw_pending_badge(painter, header, palette)
+
+    def _fill(self, palette: Palette) -> str:
+        """Dragging wins over hovering, hovering over the kind's own fill (spec §4)."""
+        if self._dragging:
+            return palette.drag
+        if self._hovered:
+            return palette.hover
+        return card_fill(palette, self.card.kind)
 
     # ----------------------------------------------------------------- item hooks
+
+    def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        self._hovered = True
+        self.update()
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        self._hovered = False
+        self.update()
+        super().hoverLeaveEvent(event)
 
     def itemChange(self, change: QGraphicsObject.GraphicsItemChange, value: object) -> object:
         """Keep an attached child inside its parent (FR-3.4, acceptance 4).
@@ -210,23 +277,54 @@ class CardItem(QGraphicsObject):
             return QPointF(min(max(point.x(), 0.0), max_x), min(max(point.y(), 0.0), max_y))
         return super().itemChange(change, value)
 
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self.update()
+        super().mousePressEvent(event)
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseReleaseEvent(event)
+        if self._dragging:
+            self._dragging = False
+            self.update()
         position = self.scenePos()
         self.moved.emit(self, position.x(), position.y())
 
 
-def _draw_pending_badge(painter: QPainter, header: QRectF) -> None:
+def _font(family: str, px: float, *, bold: bool = False, tracking_px: float = 0.0) -> QFont:
+    """A font at one of the spec's pixel sizes, with its Windows fallback family list."""
+    font = QFont(family)
+    fallback = CODE_FONT_FALLBACK if family == CODE_FONT else UI_FONT_FALLBACK
+    font.setFamilies([family, fallback])
+    font.setPointSizeF(points(px))
+    if bold:
+        font.setWeight(QFont.Weight.DemiBold)
+    if tracking_px:
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, tracking_px)
+    return font
+
+
+def _stylesheet(palette: Palette) -> str:
+    """The one place where the card's text document meets the palette (spec §5)."""
+    return (
+        f"a {{ color: {palette.link}; }} "
+        f"code, pre {{ background-color: {palette.code_bg}; color: {palette.text_primary}; }} "
+        f"h1, h2, h3, h4, h5, h6 {{ color: {palette.text_primary}; }} "
+        f"th, td {{ color: {palette.text_primary}; }}"
+    )
+
+
+def _draw_pending_badge(painter: QPainter, header: QRectF, palette: Palette) -> None:
     """A small "rendering…" pill on the right of the header (D-022 item 4)."""
-    font = QFont("Segoe UI", 8)
-    painter.setFont(font)
+    painter.setFont(_font(UI_FONT, FONT_PX["control"], bold=True))
     text = "渲染中…"
     width = painter.fontMetrics().horizontalAdvance(text) + 12.0
     pill = QRectF(header.right() - width - 8.0, header.top() + 7.0, width, header.height() - 14.0)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QBrush(QColor("#ffffff")))
+    painter.setBrush(QBrush(QColor(palette.card_bg)))
     painter.drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0)
-    painter.setPen(QPen(QColor("#4a5568")))
+    painter.setPen(QPen(QColor(palette.text_secondary)))
     painter.drawText(pill, int(Qt.AlignmentFlag.AlignCenter), text)
 
 
@@ -240,7 +338,7 @@ def _draw_body_image(painter: QPainter, body: QRectF, image: QPixmap) -> None:
     painter.drawPixmap(int(body.left()), int(body.top()), scaled)
 
 
-def _build_document(card: Card, blocks: Mapping[int, Block]) -> QTextDocument:
+def _build_document(card: Card, blocks: Mapping[int, Block], palette: Palette) -> QTextDocument:
     """Render this card's own blocks (never its children's) as Markdown text."""
     parts: list[str] = []
     for index in card.own_block_indexes:
@@ -253,16 +351,18 @@ def _build_document(card: Card, blocks: Mapping[int, Block]) -> QTextDocument:
         if text:
             parts.append(text)
     document = QTextDocument()
-    document.setDefaultFont(QFont("Segoe UI", 10))
+    document.setDefaultFont(_font(UI_FONT, FONT_PX["body"]))
+    # Code blocks and links must stay readable on the dark fill, where the markdown
+    # importer's own light colours would otherwise paint dark-on-dark.
+    document.setDefaultStyleSheet(_stylesheet(palette))
     document.setMarkdown("\n\n".join(parts))
     return document
 
 
-def _draw_header_text(painter: QPainter, header: QRectF, card: Card) -> None:
+def _draw_header_text(painter: QPainter, header: QRectF, card: Card, palette: Palette) -> None:
     glyph = KIND_GLYPH.get(card.kind, "•")
-    painter.setPen(QPen(QColor("#1a202c")))
-    font = QFont("Segoe UI", 10)
-    font.setBold(True)
+    painter.setPen(QPen(QColor(palette.text_secondary)))
+    font = _font(UI_FONT, FONT_PX["control"], bold=True)
     painter.setFont(font)
     glyph_rect = QRectF(header.left() + 8.0, header.top(), 30.0, header.height())
     painter.drawText(glyph_rect, int(Qt.AlignmentFlag.AlignVCenter), glyph)
@@ -273,6 +373,7 @@ def _draw_header_text(painter: QPainter, header: QRectF, card: Card) -> None:
     elided = painter.fontMetrics().elidedText(
         title, Qt.TextElideMode.ElideRight, int(title_rect.width())
     )
+    painter.setPen(QPen(QColor(palette.text_primary)))
     painter.drawText(
         title_rect,
         int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),

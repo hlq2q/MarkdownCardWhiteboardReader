@@ -16,12 +16,15 @@ class WebCardRenderer(Protocol):
     the canvas draws as a static pixmap, so zoom stays crisp and hit-testing unaffected.
     """
 
-    def render(self, *, kind: CardKind, source: str, scale: float) -> Path | None:
+    def render(
+        self, *, kind: CardKind, source: str, scale: float, theme: str = "light"
+    ) -> Path | None:
         """Return a cached PNG for this content at this zoom, or None if rendering is impossible.
 
         ``scale`` is the canvas zoom (1.0 = 100%); the renderer rounds it to its own
-        bucket step. Implementations never raise: every failure (missing assets, no
-        WebEngine, timeout, blank grab) degrades to ``None`` so the caller keeps its
-        text fallback.
+        bucket step. ``theme`` is ``"light"`` or ``"dark"`` and is part of the cache key
+        (visual spec §5), so a dark raster is never reused for a light card and vice versa.
+        Implementations never raise: every failure (missing assets, no WebEngine, timeout,
+        blank grab) degrades to ``None`` so the caller keeps its text fallback.
         """
         ...

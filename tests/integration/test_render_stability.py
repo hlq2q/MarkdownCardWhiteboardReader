@@ -28,8 +28,10 @@ class NullRenderer:
 
     last_error = "null renderer"
 
-    def render(self, *, kind: object, source: str, scale: float) -> Path | None:
-        del kind, source, scale
+    def render(
+        self, *, kind: object, source: str, scale: float, theme: str = "light"
+    ) -> Path | None:
+        del kind, source, scale, theme
         return None
 
 

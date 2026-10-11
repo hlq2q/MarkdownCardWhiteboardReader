@@ -1,6 +1,6 @@
 # DECISIONS — 关键决策
 
-- 最后更新：2026-10-12 02:58:21 +08:00
+- 最后更新：2026-10-12 06:31:01 +08:00
 - 状态枚举：仅 proposed / accepted / rejected / superseded
 - 说明：D-001..D-015 对应 `docs/requirements-spec.md` §0.1 的台账 D1–D15（同一批决策，本文是权威索引）；D-016..D-020 为工程与流程决策。**理由列只写用户实际给出的取舍**；若用户仅选定选项而未陈述理由，写「选定该选项」并附上该选项当时声明的取舍（标注为选项描述）。
 
@@ -328,5 +328,19 @@
 - 决定：默认**跟随系统**（Windows 应用主题），并提供手动切换（浅色 / 深色 / 跟随系统三态）；主题偏好持久化到应用数据目录
 - 理由：用户选定「跟随系统 + 可手动切换」。
 - 影响：`docs/visual-spec.md` 必须给出两套完整取值；`shared/config.py` 存主题偏好；切换不得导致内容重渲染失败或布局丢失（T-024 验收 ③）。
+- 关联任务：T-024
+
+## D-031 主题实现：取值落点、渲染页取色方式，以及两处记录在案的未落地项
+
+- 日期：2026-10-12
+- 状态：accepted
+- 背景：T-024 的 ③④ 要把 `docs/visual-spec.md` 从文档变成可运行代码，路上有三处没有先例的取舍：调色板放哪一层、离屏渲染页怎么拿到两套颜色、原实现里「按卡片类型着色」的标题栏怎么办。
+- 选项与决定：
+  1. **调色板落点**：用户已批准的 visual-spec §7 指定 `interfaces/gui/theme.py`，照此创建（两份调色板 + 字体/尺寸常量 + WCAG 对比度函数）。`web_renderer` 需要 shell 的两套底色/字色时，在 `_write_shell()` 内**惰性导入** `LIGHT`/`DARK`，不复制常量、也不改成 container 注入 —— 复制会造出第二份真相，注入会把一次静态取值变成每个调用点都要传的参数。这是 infrastructure 唯一一次读 interfaces 的纯数据（无 Qt），故记录在此而非默默做掉。
+  2. **渲染页取色方式**：不按主题重写 shell、也不重载页面，而是让 shell 同时携带两套颜色并提供 `window.mcwrSetTheme(theme)`；渲染前若页面主题不符就调用它（失败则重载一次，再失败即返回失败，**不缓存错色位图**）。理由是重载会与紧跟其后的渲染提交竞态。深色位图能出深底还依赖 Chromium 在 `print-color-adjust: exact`（Qt 侧 `PrintElementBackgrounds=True` 已开）下打印元素背景——这条已用真实渲染的像素断言钉住。
+  3. **移除自造的「按类型强调色」**：spec §1 的 16 个语义色位里没有类型强调色，§6 又规定类型由图标（`KIND_GLYPH`）承载，因此卡片填充改由 `card_fill()` 按类型取语义位（大卡片 / 标题 / 代码与图片 / 表格 / 普通），不再使用自造的 `ACCENT` 字典。
+  4. **代码块 = 按主题着色，不是语法高亮**：正文由 `QTextDocument` 直接渲染 Markdown，全项目没有词法高亮实现；本轮只做到「代码块底色与文字随主题、深色下可读」。visual-spec §5 字面要求的「两套高亮配色」未落地，已作为遗留项（TASKS §4.1）等你决定是否开新任务。
+- 理由：全部服从 D-021（visual-spec 是唯一取值来源）与 D-022（与稳定性冲突时让位于稳定性）：切换主题只重绘、只重新排队位图，不动任何 `CardLayout`、不重解析文档。
+- 影响：新增 `interfaces/gui/theme.py`、`shared/config.py`；`card_item.py` / `board_view.py` / `main_window.py` 的硬编码颜色改为语义位并新增 `apply_theme`；`web_renderer.py` 的 `theme` 进缓存键与渲染页；`application/features/render_card/` 端口与用例新增 `theme` 参数。属性命名为 `visual_palette` 而非 `palette`：`QWidget.palette()` 与 `QGraphicsScene.palette()` 已占用该名字（mypy 直接报 override 不兼容）。
 - 关联任务：T-024
 

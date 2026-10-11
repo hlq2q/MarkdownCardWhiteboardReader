@@ -7,23 +7,41 @@ from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QTransform, QWhee
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
 
 from mcwr.domain.models import Viewport
-
-GRID_STEP = 40.0
+from mcwr.interfaces.gui.theme import GRID_ALPHA, GRID_STEP, LIGHT, Palette
 
 
 class BoardScene(QGraphicsScene):
-    """The whiteboard surface: a light canvas with a faint grid for orientation."""
+    """The whiteboard surface: a themed canvas with a faint grid for orientation."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, palette: Palette = LIGHT) -> None:
         super().__init__(parent)
-        self.setBackgroundBrush(QColor("#eef1f5"))
+        self._palette = palette
+        self._grid_pen = QPen(_grid_colour(palette), 0.0)
+        self.setBackgroundBrush(QColor(palette.board_bg))
+
+    @property
+    def visual_palette(self) -> Palette:
+        """The palette the board paints with (read-only view for tests).
+
+        Not named ``palette``: ``QGraphicsScene.palette()`` is Qt's ``QPalette`` accessor.
+        """
+        return self._palette
+
+    def set_palette(self, palette: Palette) -> None:
+        """Repaint the canvas and its grid in another theme (T-024 ③); moves nothing."""
+        if palette.theme is self._palette.theme:
+            return
+        self._palette = palette
+        self._grid_pen = QPen(_grid_colour(palette), 0.0)
+        self.setBackgroundBrush(QColor(palette.board_bg))
+        self.update()
 
     def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
         super().drawBackground(painter, rect)
         rect = QRectF(rect)
         left = rect.left() - (rect.left() % GRID_STEP)
         top = rect.top() - (rect.top() % GRID_STEP)
-        painter.setPen(QPen(QColor("#dfe4ea"), 0.0))
+        painter.setPen(self._grid_pen)
         lines: list[QLineF] = []
         x = left
         while x < rect.right():
@@ -34,6 +52,13 @@ class BoardScene(QGraphicsScene):
             lines.append(QLineF(rect.left(), y, rect.right(), y))
             y += GRID_STEP
         painter.drawLines(lines)
+
+
+def _grid_colour(palette: Palette) -> QColor:
+    """Spec §4: the grid is ``divider`` at 40% opacity, drawn over the board fill."""
+    colour = QColor(palette.divider)
+    colour.setAlpha(GRID_ALPHA)
+    return colour
 
 
 class BoardView(QGraphicsView):

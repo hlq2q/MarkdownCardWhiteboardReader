@@ -78,6 +78,9 @@ _KIND_TAGS: Final[dict[CardKind, str]] = {
     CardKind.MATH_BLOCK: "math",
     CardKind.MERMAID: "mermaid",
 }
+_THEME_LIGHT: Final[str] = "light"
+_THEME_DARK: Final[str] = "dark"
+"""The two raster themes: the cache digest and the page both key off exactly these words."""
 _STAGE_WIDTH: Final[int] = 480
 """CSS width of the render stage: a representative card-body width on the whiteboard."""
 _SHELL_NAME: Final[str] = "_shell.html"
@@ -120,11 +123,13 @@ _SHELL_HTML: Final[str] = """<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="{katex_css}">
 <style>
-  html, body {{ margin:0; padding:0; background:#ffffff; }}
-  #stage {{ display:block; width:{stage_width}px; padding:8px; background:#ffffff;
-            box-sizing:content-box; }}
+  html, body {{ margin:0; padding:0; background:{light_bg}; color:{light_fg};
+               -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  #stage {{ display:block; width:{stage_width}px; padding:8px; background:{light_bg};
+            color:{light_fg}; box-sizing:content-box;
+            -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
   .katex-display {{ margin:0.4em 0; }}
-  .katex {{ font-size:20px; }}
+  .katex {{ font-size:20px; color:inherit; }}
   /* A diagram scales down to the card width but is never stretched beyond its own size:
      forcing width:100% turned a small flowchart into a tall narrow column. */
   #stage svg {{ max-width:100%; height:auto; }}
@@ -137,7 +142,29 @@ window.mcwrState = "boot";
 window.mcwrError = null;
 window.mcwrRenders = 0;
 window.mcwrSizeJson = "";
+window.mcwrTheme = "light";
 let seq = 0;
+
+/* Theme switch (T-024, visual spec §5). The page carries BOTH themes, so switching is a
+   JS call and never a page reload: a reload would race with the render submitted right
+   after it. Chromium prints element backgrounds only with print-color-adjust:exact, which
+   is why the stage fill is set inline as well as in the style block above. */
+window.mcwrSetTheme = function (theme) {{
+  const dark = String(theme) === "dark";
+  const bg = dark ? "{dark_bg}" : "{light_bg}";
+  const fg = dark ? "{dark_fg}" : "{light_fg}";
+  document.documentElement.style.background = bg;
+  document.documentElement.style.color = fg;
+  document.body.style.background = bg;
+  document.body.style.color = fg;
+  const stage = document.getElementById("stage");
+  stage.style.background = bg;
+  stage.style.color = fg;
+  mermaid.initialize({{startOnLoad: false, theme: dark ? "dark" : "neutral",
+                      securityLevel: "loose", fontFamily: "{ui_font}"}});
+  window.mcwrTheme = dark ? "dark" : "light";
+  return true;
+}};
 
 /* The payload's content box and the end of its render are reported together: two separate
    runJavaScript commands are queued independently, so a size readback issued as its own
@@ -195,6 +222,7 @@ window.mcwrRender = function (kind, payload) {{
 }};
 
 mermaid.initialize({{startOnLoad: false, theme: "neutral", securityLevel: "loose"}});
+window.mcwrSetTheme("light");
 window.mcwrState = "ready";
 </script>
 </body></html>
@@ -265,16 +293,20 @@ class QtWebCardRenderer:
         self._holder: QWidget | None = None
         self._view: QWebEngineView | None = None
         self._shell_path: Path | None = None
+        self._page_theme: str | None = None
+        """Which theme the loaded page currently carries; ``None`` means "not applied yet"."""
         self._sequence = 0
         """Render counter, mirrored into the page: tells *this* render from the last one."""
         self._last_reason = "unknown"
 
     # ------------------------------------------------------------------ public API
 
-    def render(self, *, kind: CardKind, source: str, scale: float) -> Path | None:
-        """Return the cached PNG of ``source`` at ``scale``, or ``None`` on any failure."""
+    def render(
+        self, *, kind: CardKind, source: str, scale: float, theme: str = _THEME_LIGHT
+    ) -> Path | None:
+        """Return the cached PNG of ``source`` at ``scale`` in ``theme``, or ``None``."""
         try:
-            return self._render(kind=kind, source=source, scale=scale)
+            return self._render(kind=kind, source=source, scale=scale, theme=theme)
         except Exception as exc:  # noqa: BLE001 - the port promises never to raise
             return self._fail(f"{kind} render raised {exc!r}")
 
@@ -284,23 +316,35 @@ class QtWebCardRenderer:
         bucket = round(raw / self.bucket_step) * self.bucket_step
         return min(max(round(bucket, 4), _MIN_SCALE), _MAX_SCALE_BUCKET)
 
-    def cache_path(self, *, kind: CardKind, source: str, scale: float) -> Path:
-        """Deterministic PNG path for this content at this zoom (the cache key)."""
+    def cache_path(
+        self, *, kind: CardKind, source: str, scale: float, theme: str = _THEME_LIGHT
+    ) -> Path:
+        """Deterministic PNG path for this content, this zoom and this theme (the cache key).
+
+        The theme is part of the digest on purpose (visual spec §5): sharing one file
+        between the light and the dark raster would paint a white formula on a dark card.
+        """
         tag = _KIND_TAGS.get(kind, kind.value)
-        material = f"{kind.value}\x00{source}\x00{self.bucket_for(scale):.4f}"
+        material = (
+            f"{kind.value}\x00{source}\x00{self.bucket_for(scale):.4f}"
+            f"\x00{_normalize_theme(theme)}"
+        )
         digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:_DIGEST_CHARS]
         return self.cache_dir / f"{_CACHE_PREFIX}{tag}-{digest}.png"
 
     # ----------------------------------------------------------------- render path
 
-    def _render(self, *, kind: CardKind, source: str, scale: float) -> Path | None:
+    def _render(
+        self, *, kind: CardKind, source: str, scale: float, theme: str = _THEME_LIGHT
+    ) -> Path | None:
         if kind not in _KIND_TAGS:
             return None  # not our content: no error, no image, the view keeps its text
         body = source.strip()
         if not body:
             return None
         bucket = self.bucket_for(scale)
-        path = self.cache_path(kind=kind, source=body, scale=bucket)
+        wanted = _normalize_theme(theme)
+        path = self.cache_path(kind=kind, source=body, scale=bucket, theme=wanted)
         cached = self._load_cached(path)
         if cached is not None:
             self.stats["cache_hits"] += 1
@@ -315,6 +359,9 @@ class QtWebCardRenderer:
             self._ensure_view()
         except RuntimeError as exc:
             return self._fail(f"web page could not be prepared: {exc}")
+        theme_problem = self._ensure_page_theme(wanted)
+        if theme_problem is not None:
+            return self._fail(theme_problem)
         size = self._render_in_page(kind=kind, body=body)
         if isinstance(size, str):
             # One self-heal: a page that lost its script (a wedged or half-initialised
@@ -423,6 +470,44 @@ class QtWebCardRenderer:
         return target
 
     # ---------------------------------------------------------------- page control
+
+    def _ensure_page_theme(self, theme: str) -> str | None:
+        """Put the page into ``theme`` once; returns a failure reason, or ``None``.
+
+        The page carries both themes, so switching is a JS call rather than a reload —
+        a reload between deciding to render and submitting the payload would race with it.
+        A page that will not switch (a wedged render process) is reloaded once; if it still
+        refuses, the render fails instead of caching a light raster under the dark key.
+        """
+        if self._page_theme == theme:
+            return None
+        if not self._apply_page_theme(theme):
+            self._reload_shell()
+            if not self._apply_page_theme(theme):
+                return f"the render page would not switch to the {theme} theme"
+        self._page_theme = theme
+        return None
+
+    def _apply_page_theme(self, theme: str) -> bool:
+        """Call the shell's ``mcwrSetTheme``; ``True`` only on its own ``true`` answer."""
+        page = self._view_page()
+        if page is None:  # pragma: no cover - the view exists before any theme switch
+            return False
+        box: dict[str, object] = {"value": None}
+        done = {"ok": False}
+
+        def callback(
+            value: object,
+            _box: dict[str, object] = box,
+            _done: dict[str, bool] = done,
+        ) -> None:
+            _box["value"] = value
+            _done["ok"] = True
+
+        page.runJavaScript(f"window.mcwrSetTheme({json.dumps(theme)})", callback)
+        if not self._pump_until(partial(_is_ready, done), _POLL_SLICE_MS):
+            return False
+        return box["value"] is True
 
     def _render_in_page(self, *, kind: CardKind, body: str) -> tuple[int, int] | str:
         """Run one payload in the page and return its content box, or a failure reason.
@@ -574,6 +659,7 @@ class QtWebCardRenderer:
                 not self._wait_until_ready()
             ):
                 raise RuntimeError(f"shell script never became ready ({shell})")
+        self._page_theme = _THEME_LIGHT  # the shell boots light and says so to the page
         return view
 
     def _reload_shell(self) -> None:
@@ -594,6 +680,7 @@ class QtWebCardRenderer:
         finally:
             page.loadFinished.disconnect(on_load)
         self._wait_until_ready()
+        self._page_theme = _THEME_LIGHT  # a reloaded shell is light again
 
     def _wait_until_ready(self) -> bool:
         """Whether the shell script has finished booting *and* published its entry point.
@@ -714,6 +801,12 @@ class QtWebCardRenderer:
         """Materialize the HTML shell (once per cache dir) with absolute local asset URIs."""
         if self._shell_path is not None and self._shell_path.is_file():
             return self._shell_path
+        # The shell's two stage colours *are* the visual spec's ``card_bg``/``text_primary``
+        # of each theme, so they are read from the palette instead of being copied here. The
+        # import is deliberately local: the palette lives in the GUI layer
+        # (``docs/visual-spec.md`` §7) and infrastructure must not import interfaces.
+        from mcwr.interfaces.gui.theme import DARK, LIGHT, UI_FONT
+
         assets = self._asset_paths()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         html = _SHELL_HTML.format(
@@ -721,11 +814,25 @@ class QtWebCardRenderer:
             katex_js=assets["katex.min.js"].as_uri(),
             mermaid_js=assets["mermaid.min.js"].as_uri(),
             stage_width=_STAGE_WIDTH,
+            light_bg=LIGHT.card_bg,
+            light_fg=LIGHT.text_primary,
+            dark_bg=DARK.card_bg,
+            dark_fg=DARK.text_primary,
+            ui_font=UI_FONT,
         )
         shell = self.cache_dir / _SHELL_NAME
         shell.write_text(html, encoding="utf-8")
         self._shell_path = shell
         return shell
+
+
+def _normalize_theme(theme: str) -> str:
+    """Map any caller value onto exactly one of the two raster themes.
+
+    Unknown values fall back to light instead of creating a third cache namespace: the
+    digest must have a closed set of themes, or a typo would silently fork the cache.
+    """
+    return _THEME_DARK if str(theme).strip().lower() == _THEME_DARK else _THEME_LIGHT
 
 
 def _is_blank(image: QImage) -> bool:

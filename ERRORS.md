@@ -1,6 +1,6 @@
 # ERRORS — 错误、根因与验证
 
-- 最后更新：2026-10-12 02:58:21 +08:00
+- 最后更新：2026-10-12 06:31:01 +08:00
 - 状态枚举：仅 open / fixed / wontfix
 - 说明：本轮（MVP 开发）实际发生的事故。可迁移的通用机制已在各条「防止复发」中指向 `pitfall-playbook` §13，此处只留细节。
 
@@ -224,3 +224,15 @@
 - 验证：重读后编辑成功并跑通。
 - 关联任务：—
 - 防止复发：一个文件只走一条写入通道；需要批量替换时用 `ops_replace`，不要用 `sed -i` 混搭（pitfall-playbook §11 #1）。
+
+## E-019 端口新增参数后，脚本化测试替身仍走旧分支，T-016 的确定性测试变红
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：给 `WebCardRenderer.render` 加 `theme` 参数、并在渲染前插入「把渲染页切到该主题」一步后，`src/mcwr/infrastructure/test_web_renderer.py` 里两个**不依赖 WebEngine** 的脚本化测试失败：一个报 `the ladder should recover: the render page would not switch to the light theme`，另一个报 `assert 0 == 3`（重试阶梯一次都没跑到）。
+- 报错/日志：`AssertionError: the ladder should recover: the render page would not switch to the light theme`；`AssertionError: the ladder must be bounded, not a retry loop` / `assert 0 == 3`。
+- 根因：`_scripted_renderer` 这个替身替换的是**旧**的页面路径（`_ensure_view` / `_ensure_app` / `_render_in_page`），新增的 `_ensure_page_theme` 走的是没被替换的真实路径；该替身没有 view，`_view_page()` 返回 `None`，于是主题切换必然失败，`_render` 在到达重试阶梯前就返回了。也就是说：测试仍绿只能证明旧路径还通，证明不了替身仍代表当前实现。
+- 修复：替身同时替换新分支（`_apply_page_theme` → `True`），并在该处写明「页面层是假的，所以与页面的对话也必须是假的」。
+- 验证：`pytest src/mcwr/infrastructure/test_web_renderer.py -q` 退出码 0、17/17（含两条真实深色渲染）；全量 `pytest -q` 退出码 0、286 项；`ruff` 全绿、`mypy --strict` 76 文件 0 错误。
+- 关联任务：T-024
+- 防止复发：给一条执行路径**插入新步骤**时，先逐个列出「这条路上每一步被谁替换」，替身必须覆盖新步骤；把「旧测试还绿」当作替身仍然有效的证据，等于在验证一条已经不存在的路径（pitfall-playbook §11 #19「调试开关当真实能力」的同类：区分"跳过了判断"与"真的具备"）。

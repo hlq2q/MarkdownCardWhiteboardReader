@@ -136,8 +136,10 @@ def test_a_failing_renderer_degrades_to_text_without_crashing() -> None:
     class FailingRenderer:
         last_error = "injected failure for the isolation test"
 
-        def render(self, *, kind: object, source: str, scale: float) -> Path | None:
-            del kind, source, scale
+        def render(
+            self, *, kind: object, source: str, scale: float, theme: str = "light"
+        ) -> Path | None:
+            del kind, source, scale, theme
             return None
 
     window = MainWindow(persist=False, renderer=FailingRenderer())  # type: ignore[arg-type]

@@ -2,7 +2,7 @@
 
 - 项目名称：Markdown Card Whiteboard Reader（包名 `mcwr`，分发名 `markdown-card-whiteboard`）
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 03:55:00 +08:00
+- 最后更新：2026-10-12 06:31:01 +08:00
 
 ## 1. 项目目标
 
@@ -26,7 +26,7 @@
 ## 3. 目录结构
 
 > 观测命令：`ls -1`、`find src/mcwr -type f -name "*.py" | sort`、`find tests -type f | sort`
-> 观测时间：2026-10-12 02:57 +08:00
+> 观测时间：2026-10-12 06:31 +08:00
 
 ```
 MarkdownCardWhiteboardReader/
@@ -50,7 +50,9 @@ MarkdownCardWhiteboardReader/
 │   │                      # json_layout_store(+_layout_codec/+_atomic) · app_paths · web_renderer
 │   ├── interfaces/
 │   │   ├── cli/           # main.py（cards/version/gui）· views.py
-│   │   └── gui/           # app.py · main_window.py · board_view.py · card_item.py · session.py
+│   │   └── gui/           # app.py · main_window.py · board_view.py · card_item.py
+│   │                      # session.py · theme.py（双主题调色板/字体/尺寸，visual-spec 落地）
+│   ├── shared/            # logging.py · config.py（主题偏好等持久化，原子写）
 │   ├── assets/web/        # katex/ · mermaid/dist/ · LICENSES.md
 │   └── container.py       # 唯一装配点
 ├── spikes/                # 一次性验证脚本 + NOTES.md + samples/ + _out/（_out 已 gitignore）
@@ -85,23 +87,25 @@ MarkdownCardWhiteboardReader/
 | `src/mcwr/application/features/detach_restore/` | 目录 | 拆出 / 还原 / 收回子卡 / 全部还原 / 折叠状态机 | `detach_card` `restore_card` `reclaim_children` `restore_all` `toggle_collapse` | domain | GUI session | 低 | 8 | 高 |
 | `src/mcwr/application/features/persist_layout/` | 目录 | 快照恢复/持久化用例 + `LayoutStore` 端口 | `restore_snapshot` `persist_snapshot` `LayoutStore` | domain | GUI session | 中：损坏快照必须降级不阻塞 | 9 | 高 |
 | `src/mcwr/application/features/refresh_document/` | 目录 | 刷新合并：结构签名（D11 判据）、键匹配 + 内容哈希回退、几何合并 | `plan_refresh` `is_major_change` `match_cards` `merge_layouts` | domain | GUI session | 中：判据语义易被误读 | 10 | 高 |
-| `src/mcwr/application/features/render_card/` | 目录 | 判定哪些卡片需要位图 + 提取待渲染源（纯逻辑，无 Qt） | `needs_web_render` `web_source` `card_image` `WebCardRenderer` | domain | GUI main_window | 低 | 11 | 高 |
+| `src/mcwr/application/features/render_card/` | 目录 | 判定哪些卡片需要位图 + 提取待渲染源 + 透传 `theme`（纯逻辑，无 Qt） | `needs_web_render` `web_source` `card_image` `WebCardRenderer` | domain | GUI main_window | 低 | 11 | 高 |
 | `src/mcwr/infrastructure/markdown_reader.py` | 文件 | 只读读字节、编码探测（utf-8-sig/utf-8/gbk/cp1252 → 替换字符降级）、换行统计 | `FileMarkdownReader` | parse_document.models | container | 中：降级路径需保持只读 | 12 | 高 |
 | `src/mcwr/infrastructure/markdown_it_adapter.py` | 文件 | token → IR 块（9 类成卡块 + 内容块 + toc 特判 + 图片段落升级） | `MarkdownItBlockParser` `build_parser` | markdown-it-py / mdit-py-plugins | container | 中：依赖第三方 token 形态（Spike 1 已固化） | 13 | 高 |
 | `src/mcwr/infrastructure/json_layout_store.py` | 文件 | 会话分片 JSON 快照存储：原子写 + schema 版本 + last_session 播种 | `JsonLayoutStore` | `_layout_codec` `_atomic` app_paths | container | 中：D15 分片语义 | 14 | 高 |
-| `src/mcwr/infrastructure/web_renderer.py` | 文件 | 离屏 KaTeX/Mermaid 栅格化：单隐藏视图 + `printToPdf` → `QPdfDocument.render` + 档位缓存，任何失败返回 None | `QtWebCardRenderer` | PySide6(QtWebEngine/Pdf) app_paths | container | **高**：唯一依赖 GPU/Chromium 行为的模块，历史上多次静默错误 | 15 | 高 |
+| `src/mcwr/infrastructure/web_renderer.py` | 文件 | 离屏 KaTeX/Mermaid 栅格化：单隐藏视图 + `printToPdf` → `QPdfDocument.render` + 档位缓存；`theme` 进缓存键并在渲染前用页面内 `mcwrSetTheme` 切换（不重载页面），任何失败返回 None | `QtWebCardRenderer` | PySide6(QtWebEngine/Pdf) app_paths + theme(惰性) | container | **高**：唯一依赖 GPU/Chromium 行为的模块，历史上多次静默错误 | 15 | 高 |
 | `src/mcwr/infrastructure/heuristic_sizer.py` | 文件 | 无渲染时的卡片高度估算（文本度量启发式） | `HeuristicSizeEstimator` | domain | container/GUI | 低 | 16 | 高 |
 | `src/mcwr/infrastructure/app_paths.py` | 文件 | `%APPDATA%` / `%LOCALAPPDATA%` / 资源目录定位（含测试覆盖变量） | `app_data_dir` `cache_dir` `assets_dir` | 无 | container / 测试 | 低 | 17 | 高 |
 | `src/mcwr/interfaces/gui/session.py` | 文件 | MVVM 边界：持有文档+布局，调用用例，暴露 Qt 信号；唯一知道持久化的地方 | `BoardSession` | application 全体 + persist | main_window | 中：串起全部用例 | 18 | 高 |
-| `src/mcwr/interfaces/gui/main_window.py` | 文件 | 窗口装配：视图、工具栏、右下角按钮、右键菜单、懒渲染队列、窗口状态 | `MainWindow` | session / board_view / card_item / render_card | app.py | 中：曾是槽内异常被吞的重灾区 | 19 | 高 |
-| `src/mcwr/interfaces/gui/card_item.py` | 文件 | 单卡绘制（标题栏/图标/选中态）、受父约束的拖动、可选位图身体 | `CardItem` | PySide6 / domain | main_window | 中：绘制与命中测试耦合 | 20 | 高 |
-| `src/mcwr/interfaces/gui/board_view.py` | 文件 | 画布：光标锚定缩放、中键平移、适应视图（缩放上下限夹取） | `BoardScene` `BoardView` | domain.models(Viewport) | main_window | 低 | 21 | 高 |
+| `src/mcwr/interfaces/gui/main_window.py` | 文件 | 窗口装配：视图、工具栏（缩放 + 主题三态下拉）、右下角按钮、右键菜单、懒渲染队列、窗口状态；`apply_theme` 只重绘与重新排队位图，绝不改布局 | `MainWindow` `apply_theme` | session / board_view / card_item / theme / shared.config / render_card | app.py | 中：曾是槽内异常被吞的重灾区 | 19 | 高 |
+| `src/mcwr/interfaces/gui/card_item.py` | 文件 | 单卡绘制（标题栏/图标/悬停/拖拽/选中态，全部取自主题调色板）、受父约束的拖动、可选位图身体；`set_palette` 只重新排版文本并重绘 | `CardItem` `set_palette` | PySide6 / domain / theme | main_window | 中：绘制与命中测试耦合 | 20 | 高 |
+| `src/mcwr/interfaces/gui/board_view.py` | 文件 | 画布：光标锚定缩放、中键平移、适应视图（缩放上下限夹取）；背景与网格随主题 | `BoardScene` `BoardView` | domain.models(Viewport) / theme | main_window | 低 | 21 | 高 |
 | `src/mcwr/interfaces/gui/app.py` | 文件 | 进程入口：QtWebEngine 预初始化、`--self-check` 自检、多窗口子进程拉起 | `run` `main` `prepare_webengine` `spawn_new_window` `run_self_check` | container / main_window | `packaging/entry_gui.py` | 中：启动顺序敏感 | 22 | 高 |
 | `src/mcwr/container.py` | 文件 | 唯一装配点：构造 reader/parser/store/renderer | `load` `build_web_renderer` `build_layout_store` `new_session_id` | infrastructure | CLI / GUI | 低 | 23 | 高 |
 | `packaging/mcwr.spec` | 文件 | onedir 打包规格：资源 data、隐藏导入、Qt 模块排除 | — | PyInstaller | 构建 | **高**：排除项曾误删 QtWebChannel 致打包后渲染失效 | 24 | 高 |
 | `tests/conftest.py` | 文件 | Qt offscreen 平台、QtWebEngine 预初始化、**Qt 槽异常守卫**（吞异常→测试失败） | fixture `qapp` / `qt_slot_errors_fail_the_test` | PySide6 | 全部 GUI 测试 | 低 | 25 | 高 |
 | `tests/integration/test_acceptance.py` | 文件 | 十项验收标准逐条端到端断言 | 11 个测试 | GUI 全栈 | — | 低 | 26 | 高 |
 | `spikes/NOTES.md` | 文件 | spike 1（块分类）与 spike 3（离屏渲染）结论、坑与选型 | — | — | — | 低 | 27 | 高 |
+| `src/mcwr/interfaces/gui/theme.py` | 文件 | 视觉取值落地：16 个语义色位的两套调色板、字体/字号/度量常量、主题三态解析、WCAG 对比度函数；除 `system_is_dark()` 外不 import Qt（可无 QApplication 单测） | `Theme` `ThemeMode` `Palette` `LIGHT` `DARK` `resolve_theme` `card_fill` `contrast_ratio` | domain.enums | card_item / board_view / main_window / web_renderer(惰性) | 低：取值必须与 `docs/visual-spec.md` 一致（`test_theme.py` 钉住） | 28 | 高 |
+| `src/mcwr/shared/config.py` | 文件 | 用户偏好持久化（当前只有主题模式）：`%APPDATA%\<AppName>\settings.json`，原子写 + 合并写入；读失败降级、写失败返回 False | `load_theme_mode` `save_theme_mode` `settings_path` | infrastructure._atomic / app_paths(惰性) | main_window | 低 | 29 | 高 |
 
 ## 6. 依赖关系图
 
