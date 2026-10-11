@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QTextDocument
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap, QTextDocument
 from PySide6.QtWidgets import (
     QGraphicsObject,
     QGraphicsSceneMouseEvent,
@@ -65,11 +65,13 @@ class CardItem(QGraphicsObject):
         card: Card,
         blocks: Mapping[int, Block],
         layout: CardLayout,
+        image: QPixmap | None = None,
     ) -> None:
         super().__init__()
         self.card = card
         self.layout_state = layout
         self._document = _build_document(card, blocks)
+        self._image = image
         self._width = max(layout.width, 120.0)
         self._height = max(layout.height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, True)
@@ -108,6 +110,19 @@ class CardItem(QGraphicsObject):
 
     # ------------------------------------------------------------------- painting
 
+    def set_image(self, image: QPixmap | None) -> None:
+        """Show an offscreen-rendered body (math / mermaid), or fall back to the text.
+
+        Rendering happens outside the paint path (decision D14), so the canvas only ever
+        draws a static pixmap and stays smooth while the board is transformed.
+        """
+        self._image = image
+        self.update()
+
+    @property
+    def has_image(self) -> bool:
+        return self._image is not None and not self._image.isNull()
+
     def paint(
         self,
         painter: QPainter,
@@ -137,9 +152,14 @@ class CardItem(QGraphicsObject):
 
         painter.save()
         painter.setClipRect(self.body_rect())
-        painter.translate(self.body_rect().topLeft())
-        self._document.setTextWidth(self.body_rect().width())
-        self._document.drawContents(painter, QRectF(0, 0, self.body_rect().width(), 1e6))
+        if self.has_image and self._image is not None:
+            _draw_body_image(painter, self.body_rect(), self._image)
+        else:
+            painter.translate(self.body_rect().topLeft())
+            self._document.setTextWidth(self.body_rect().width())
+            self._document.drawContents(
+                painter, QRectF(0, 0, self.body_rect().width(), 1e6)
+            )
         painter.restore()
 
         border = QColor("#2d3748") if selected else accent
@@ -174,6 +194,16 @@ class CardItem(QGraphicsObject):
         super().mouseReleaseEvent(event)
         position = self.scenePos()
         self.moved.emit(self, position.x(), position.y())
+
+
+def _draw_body_image(painter: QPainter, body: QRectF, image: QPixmap) -> None:
+    """Draw the rendered body scaled to fit the card, keeping its aspect ratio."""
+    scaled = image.scaled(
+        body.size().toSize(),
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    painter.drawPixmap(int(body.left()), int(body.top()), scaled)
 
 
 def _build_document(card: Card, blocks: Mapping[int, Block]) -> QTextDocument:
