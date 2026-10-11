@@ -2,7 +2,7 @@
 
 - 项目名称：Markdown Card Whiteboard Reader（包名 `mcwr`，分发名 `markdown-card-whiteboard`）
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 06:31:01 +08:00
+- 最后更新：2026-10-12 06:57:56 +08:00
 
 ## 1. 项目目标
 
@@ -59,6 +59,7 @@ MarkdownCardWhiteboardReader/
 ├── tests/
 │   ├── conftest.py        # offscreen 平台 + QtWebEngine 预初始化 + 槽异常守卫
 │   └── integration/       # test_acceptance.py · test_gui_smoke.py · test_cli_cards.py · test_body_render.py
+│                          # test_render_stability.py · test_theme_switch.py · test_card_limit.py
 ├── build/ dist/           # PyInstaller 产物（gitignore）
 ```
 
