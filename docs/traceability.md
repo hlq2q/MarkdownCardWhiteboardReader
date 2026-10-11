@@ -18,7 +18,7 @@
 | D11 刷新判据 | 大卡片数或标题层级序列变化 = 重大 | `application/features/refresh_document/service.py` | 该切片 42 项单测 + `test_acceptance.py::test_acceptance_6_...` / `..._6b_...`（端到端交叉验证） | ✅ |
 | D12 增强功能归属 | 折叠进 MVP，其余后续 | 折叠已实现；搜索/大纲/连线未做 | — | ✅（MVP 部分） |
 | D13 交付落点 | 本仓库 | `docs/`、`src/mcwr/` | — | ✅ |
-| D14 离屏渲染 | Web 仅做离屏渲染 → 图片 + 缩放档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/` | 渲染器 12 项单测通过、PNG 经人工核验；App 内集成不可靠（页面已渲染但 Python 侧轮询超时 → 回退文本） | ⏳ |
+| D14 离屏渲染 | Web 仅做离屏渲染 → 图片 + 缩放档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/` | 渲染器 46 项测试通过；App 路径实测出图（数学 `E = mc²`、Mermaid 流程图，md5 不同，人工核验） | ⏳ |
 | D15 会话分片 | 每会话一份分片 + `last_session` 指针 | `infrastructure/json_layout_store.py::_adopt` | `test_json_layout_store.py`（新会话不再动旧分片）、`test_gui_smoke.py::test_a_new_session_does_not_share_the_previous_layout`、`test_acceptance.py::test_acceptance_8_...` | ✅ |
 
 ## 验收标准 → 测试
@@ -40,7 +40,7 @@
 
 | 项 | 说明 |
 |---|---|
-| 公式 / Mermaid 实际渲染 | **未达标**：渲染器独立可用（12 项单测 + 人工看图确认），但经 App 路径时 Python 侧轮询超时，卡片退回原文渲染。复现：`python -m uv run python spikes/spike_app_render_probe.py`（页面 `mcwrRenders` 递增、`mcwrState=done`，而渲染器 stats 仍为 `rendered=0, failed=N`）。另有一次 App 运行把同一张 Mermaid 图缓存到两个卡片键下（跨图串帧），已加回归守卫 `tests/integration/test_body_render.py`（当前 xfail） |
+| 公式 / Mermaid 实际渲染 | **已达标**（printToPdf + QPdfDocument.render）；历史缺陷记录：：渲染器独立可用（12 项单测 + 人工看图确认），但经 App 路径时 Python 侧轮询超时，卡片退回原文渲染。复现：`python -m uv run python spikes/spike_app_render_probe.py`（页面 `mcwrRenders` 递增、`mcwrState=done`，而渲染器 stats 仍为 `rendered=0, failed=N`）。另有一次 App 运行把同一张 Mermaid 图缓存到两个卡片键下（跨图串帧），已加回归守卫 `tests/integration/test_body_render.py`（当前 xfail） |
 | 目录卡片点击跳转（FR-2.4） | 未实现；spec §5.1 的 MVP 清单未列入该项，大纲导航在 §5.2 归入 V1.1 |
 | 打包（NFR-7） | 未开始：PyInstaller onedir + 资源（含 `src/mcwr/assets/web`）路径尚未验证 |
 | 多进程并发写同一分片 | 设计上由 D15 会话分片规避；未做真实双进程并发压测 |

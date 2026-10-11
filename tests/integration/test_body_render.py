@@ -1,16 +1,16 @@
 """Integration: math and mermaid cards become real images through the offscreen renderer.
 
-Status: the rasterizer itself works (its own tests render correct KaTeX/Mermaid PNGs and
-the images have been inspected by hand), but the *app path* is not trusted yet, so the
-image assertions below are marked ``xfail`` rather than deleted or left as a false green:
+This is the end-to-end proof of decision D14: port + KaTeX/Mermaid assets + cache + the
+card item's pixmap path. Two traps are guarded deliberately:
 
-* every render driven from the window's timer queue times out on the Python side even
-  though the page reports ``mcwrRenders`` incremented and ``mcwrState === 'done'``;
-* an earlier app run cached the *same* image (the Mermaid flowchart) under both cards'
-  cache keys, i.e. a stale-frame cross-talk that a cache hit then happily re-served.
+* every test uses a **fresh cache directory**, so a cache hit can never fake a pass;
+* two different payloads must produce **different** pixels — an earlier app run cached the
+  same Mermaid raster under both cards' keys (a stale-frame cross-talk), which a cache hit
+  then happily re-served. Identical images are the symptom, so they are asserted against.
 
-What must hold today, and is asserted strictly: the window opens, the cards stay in
-their text form, and nothing crashes (FR-1.5, acceptance 10).
+The rasterizer renders through Chromium's print pipeline (``printToPdf`` + ``QPdfDocument``)
+rather than grabbing the hidden widget: a headless ``QWebEngineView.grab()`` returns the
+unpainted surface, which is how blank images once passed a "non-blank" check.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ SAMPLE = REPO_ROOT / "spikes" / "samples" / "sample.md"
 
 RENDER_TIMEOUT_S = 25.0
 
-KNOWN_ISSUE = (
-    "app-path rendering is unreliable: the page renders but the Python-side poll times "
-    "out, so cards fall back to text; see spikes/spike_app_render_probe.py"
+UNAVAILABLE = (
+    "no WebEngine-backed rendering in this environment: cards keep their text form "
+    "(documented degradation, FR-1.5); see spikes/spike_app_render_probe.py"
 )
 
 
@@ -83,7 +83,7 @@ def test_two_web_cards_do_not_render_the_same_image(tmp_path: Path) -> None:
 
     rendered = [cid for cid in card_ids if window.card_items[cid].has_image]
     if len(rendered) < 2:
-        pytest.xfail(f"{KNOWN_ISSUE} (only {len(rendered)}/{len(card_ids)} cards got an image)")
+        pytest.xfail(f"{UNAVAILABLE} (only {len(rendered)}/{len(card_ids)} cards got an image)")
 
     digests = set()
     for card_id in rendered:

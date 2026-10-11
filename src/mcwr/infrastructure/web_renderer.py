@@ -86,8 +86,15 @@ _MIN_SCALE: Final[float] = 0.25
 _MIN_BUCKET_STEP: Final[float] = 0.01
 _MAX_SCALE_BUCKET: Final[float] = 4.0
 _DIGEST_CHARS: Final[int] = 32
-_POLL_SLICE_MS: Final[int] = 250
-"""How long one JS evaluation is given before the poll re-asks (see ``_wait_for``)."""
+_POLL_SLICE_MS: Final[int] = 1500
+"""How long one JS evaluation is given before the poll re-asks (see ``_wait_for``).
+
+This must exceed the round trip of a single ``runJavaScript`` answer, which was measured at
+~300 ms in the running application (a busy main thread slows the render process's reply).
+At the previous 250 ms every slice expired just before its own answer arrived, so the poll
+restarted the command instead of reading its result: a 15 s budget bought only ~11 reads,
+fewer than a Mermaid render needs, and every card timed out while the page itself reported
+successful renders."""
 _VIEW_WIDTH: Final[int] = 1280
 _VIEW_HEIGHT: Final[int] = 1024
 """Viewport of the one hidden view. Large enough that the stage never reflows."""
@@ -154,6 +161,10 @@ function failed(message) {{
 }}
 
 window.mcwrRender = function (kind, payload) {{
+  /* The counter rises when a render STARTS, so the Python side can tell "this payload has
+     been picked up" from "the previous payload is still the finished one". Without that, a
+     wait for "counter == n" is either satisfied by a stale value or never satisfied. */
+  window.mcwrRenders += 1;
   window.mcwrState = "busy";
   window.mcwrError = null;
   const stage = document.getElementById("stage");
@@ -375,18 +386,23 @@ class QtWebCardRenderer:
         page = self._view_page()
         if page is None:  # pragma: no cover - _ensure_view ran before this
             return "no web page available"
-        # Derive the expected counter from the PAGE, never from a local counter: a render
-        # issued while the shell was still loading never raises the page's counter, so a
-        # local counter that keeps incrementing would wait for a number the page can never
-        # reach. That is exactly how every render in the app path timed out while the page
-        # itself reported successful renders.
+        # Every wait is expressed in terms of the PAGE's own counter, read from the page and
+        # never tracked locally: the page raises it when a render starts, so "counter has
+        # moved past what I saw" means this payload was picked up and has settled. A local
+        # counter drifts, and waiting for a number the page can never reach is exactly how
+        # every render in the application path timed out while the page reported success.
         before = self._page_renders()
+        _trace(f"render_in_page kind={kind.value} page_renders_before={before}")
         page.runJavaScript(f"window.mcwrRender({json.dumps(_KIND_TAGS[kind])}, {json.dumps(body)})")
-        expected = (before + 1) if before is not None else self._sequence + 1
-        self._sequence = expected
-        answer = self._wait_for(self._result_expression(expected), self.timeout_ms)
+        answer = self._wait_for(self._result_expression(before), self.timeout_ms)
         if answer is None:
+            _trace(
+                f"render_in_page TIMEOUT before={before} "
+                f"page_renders={self._page_renders()!r} "
+                f"state={self._wait_for('String(window.mcwrState)', 2000)!r}"
+            )
             return f"timed out after {self.timeout_ms} ms"
+        _trace(f"render_in_page ok answer={str(answer)[:60]!r}")
         return self._read_answer(answer)
 
     def _page_renders(self) -> int | None:
@@ -410,10 +426,15 @@ class QtWebCardRenderer:
             return None
 
     @staticmethod
-    def _result_expression(expected: int) -> str:
-        """Poll expression: falsy until *this* render has started and settled."""
-        started = f"window.mcwrRenders === {expected}"
-        settled = f"window.mcwrRenders === {expected} && window.mcwrState !== 'busy'"
+    def _result_expression(seen: int | None) -> str:
+        """Poll expression: falsy until *this* render has started and settled.
+
+        ``seen`` is the counter observed before the payload was submitted (``None`` when the
+        page could not be read, which only means the counter must simply have moved).
+        """
+        moved = "true" if seen is None else f"window.mcwrRenders > {seen}"
+        started = f"({moved})"
+        settled = f"({moved} && window.mcwrState !== 'busy')"
         return (
             f"({started} ? (({settled}) ? "
             "(window.mcwrState === 'error' ? "
@@ -685,6 +706,17 @@ def _is_blank(image: QImage) -> bool:
         if max(high[c] - low[c] for c in range(3)) > _UNIFORM_RANGE:
             return False  # contrast found, so something was drawn
     return max(high[c] - low[c] for c in range(3)) <= _UNIFORM_RANGE
+
+
+def _trace(message: str) -> None:
+    """Print one diagnostic line when ``MCWR_WEB_RENDER_TRACE`` is set.
+
+    Rendering is a multi-step conversation with another process (page load, payload,
+    print, raster), so when it stalls the only useful question is *which* step stalled.
+    This is opt-in: the default path stays silent.
+    """
+    if os.environ.get("MCWR_WEB_RENDER_TRACE"):
+        print(f"[webrender {time.monotonic():.3f}] {message}", flush=True)
 
 
 def _is_ready(flag: dict[str, bool]) -> bool:
