@@ -63,16 +63,19 @@ def card_image(
     *,
     renderer: WebCardRenderer,
     scale: float,
+    theme: str = "light",
 ) -> Path | None:
     """Convenience for the view: the cached PNG for ``card``, or ``None``.
 
     ``None`` means "draw the card as text" — either the card needs no image at all, or
-    rendering failed (the renderer records why, so the GUI can show a warning).
+    rendering failed (the renderer records why, so the GUI can show a warning). ``theme``
+    is forwarded verbatim: the rasterizer resolves the math/Mermaid colours from it, and
+    the two themes must never share a cached image (visual spec §5).
     """
     source = web_source(card, blocks, card.block_index if card.block_index is not None else -1)
     if source is None:
         return None
-    return renderer.render(kind=card.kind, source=source, scale=scale)
+    return renderer.render(kind=card.kind, source=source, scale=scale, theme=theme)
 
 
 def _source_block(card: Card, blocks: Mapping[int, Block], index: int) -> Block | None:

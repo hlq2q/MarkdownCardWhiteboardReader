@@ -1,6 +1,7 @@
 # 视觉规范（Visual Spec）
 
-- 状态：**T-024 验收 ①② 的交付物**；验收 ③④（主题可切换、深色下富内容可读）待实现步骤完成
+- 状态：**T-024 已交付（①②③④ 全部完成）**；本文件是取值的唯一来源，代码中的对应实现在 `src/mcwr/interfaces/gui/theme.py`
+- 未落地项（明确记录，不含糊）：§5 的「代码高亮」目前只做到按主题着色、无词法高亮；§6 的「层级色条 4 档明度」未实现；浅色阴影为 1px 偏移半透明近似，未做高斯模糊。三项均在 `TASKS.md` §4.1 等你决定
 - 唯一取值来源：本文件（`PROJECT_MAP.md` §9 的文档边界约定）
 - 决策依据：`DECISIONS.md` D-021（覆盖清单与约束）、D-030（默认跟随系统 + 可手动切换）
 - 对比度计算脚本：`spikes/_out/contrast.py`（WCAG 2.1 相对亮度公式，可复跑核对）
@@ -172,10 +173,11 @@
 
 | 取值 | 落地位置 | 验证方式 |
 | --- | --- | --- |
-| 全部色位/字体/尺寸 | `src/mcwr/interfaces/gui/theme.py`（待建，T-024 实现步骤） | 单测断言两套主题的槽位齐全、无纯黑纯白 |
-| 卡片绘制 | `interfaces/gui/card_item.py`（现有硬编码色 → 主题槽位） | GUI 冒烟测试 + 人工看图 |
-| 白板背景/网格 | `interfaces/gui/board_view.py` | 同上传 |
+| 全部色位/字体/尺寸 | `src/mcwr/interfaces/gui/theme.py`（已建；调色板 + 字体/度量常量 + 主题解析） | `src/mcwr/interfaces/gui/test_theme.py`：槽位齐全、无纯黑纯白、对比度 ≥ AA、发布比值逐条钉住 |
+| 卡片绘制 | `interfaces/gui/card_item.py`（已改为语义位；`set_palette` 只重绘不重建） | `tests/integration/test_theme_switch.py`（文本卡深浅两套像素断言） |
+| 白板背景/网格 | `interfaces/gui/board_view.py`（`BoardScene.set_palette`，网格 = `divider` 40%） | 同上传 + `test_switching_the_theme_changes_no_layout_field` |
 | 布局默认值 | `application/features/layout_board/service.py`（默认宽/间距/缩进与本表一致） | `layout_board` 单测断言常量 |
-| 渲染 shell 主题 | `infrastructure/web_renderer.py`（`theme` 参数 + 缓存键） | `test_web_renderer.py` 新增：深浅各出一图、缓存键不同 |
-| 对比度 | 本文件 §1.1 | `python spikes/_out/contrast.py` 复算；低于门槛即视为不达标 |
-| 切换不丢布局 | `interfaces/gui/session.py` | T-024 验收 ③：切换前后 `CardLayout` 全部字段相等 |
+| 渲染 shell 主题 | `infrastructure/web_renderer.py`（`theme` 参数 + `mcwrSetTheme` + 缓存键含 theme；shell 两套底色取自本表 `card_bg`/`text_primary`） | `src/mcwr/infrastructure/test_web_renderer.py`：缓存键随主题不同 + 深色真实位图「深底浅字」像素断言 |
+| 对比度 | 本文件 §1.1 | `python spikes/_out/contrast.py` 复算；`test_theme.py` 在每轮 CI 中重算，低于门槛即失败 |
+| 切换不丢布局 | `interfaces/gui/main_window.py::apply_theme` + `interfaces/gui/session.py` | `test_theme_switch.py`：切换前后 `CardLayout` 逐字段相等、且布局对象身份不变 |
+| 主题偏好持久化 | `shared/config.py` + 工具栏三态下拉 | `test_theme_switch.py::test_the_chosen_mode_is_remembered_across_windows` |

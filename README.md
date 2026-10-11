@@ -17,7 +17,8 @@
 | PySide6 GUI（拖动/缩放/右键/右下角按钮） | ✅ | 12 项离线 GUI 冒烟测试 + 真实平台启动验证 |
 | 刷新（结构优先重建，D11 判据） | ✅ | 42 项切片单测 + 端到端验收（改正文保留位置、改层级/加分隔线重建） |
 | 十项验收标准 | ✅ | tests/integration/test_acceptance.py（逐条对应 §1.5） |
-| 公式 / Mermaid 离屏渲染（D14） | ⏳ | spike 3 已证实可行（KaTeX 0.19.0 + Mermaid 已入库），生产切片进行中 |
+| 公式 / Mermaid 离屏渲染（D14） | ✅ | 46 项渲染测试；App 内实测数学卡出 `E = mc²`、Mermaid 卡出流程图；打包后自检 `rendered_images=2/2` |
+| 视觉规范 + 双主题（跟随系统/浅色/深色） | ✅ | docs/visual-spec.md（取值唯一来源）+ `interfaces/gui/theme.py`；`tests/integration/test_theme_switch.py` 6 项（切换不动任何布局字段）、深色真实位图像素断言 |
 | 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行
@@ -31,7 +32,8 @@ python -m uv run mcwr version
 ```
 
 GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击卡片居中、拖动卡片（子卡片跟随父卡片，且不能拖出父卡片边界）、
-右键卡片 → 拖出为自由卡片 / 还原到父卡片 / 收回所有子卡片 / 折叠展开，右下角 **刷新** 与 **全部还原**。
+右键卡片 → 拖出为自由卡片 / 还原到父卡片 / 收回所有子卡片 / 折叠展开，右下角 **刷新** 与 **全部还原**；
+工具栏最右侧是**主题三态**（跟随系统 / 浅色 / 深色），切换只重绘、不移动任何卡片，选择会记住。
 `Ctrl+N` 新建窗口（新进程，独立会话）、`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放。
 
 ## 开发
@@ -41,7 +43,7 @@ GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击�
 | Python | 3.12（`py -3.12`） |
 | 依赖管理 | uv（本机以 pip 安装，命令为 `python -m uv`） |
 | 包名 / 分发名 | `mcwr` / `markdown-card-whiteboard` |
-| 数据目录 | `%APPDATA%\MarkdownCardWhiteboardReader`（布局、窗口状态）、`%LOCALAPPDATA%\...\Cache`（渲染缓存） |
+| 数据目录 | `%APPDATA%\MarkdownCardWhiteboardReader`（布局、窗口状态、`settings.json` 主题偏好）、`%LOCALAPPDATA%\...\Cache`（渲染缓存） |
 
 ```bash
 python -m uv run pytest -q                                   # 全部测试
@@ -76,6 +78,8 @@ src/mcwr/
 ├── interfaces/
 │   ├── cli/         # Typer：cards / gui / version（先行垂直切片）
 │   └── gui/         # PySide6：board_view · card_item · session(MVVM 边界) · main_window · app
+│                    # theme.py：双主题调色板/字体/尺寸（docs/visual-spec.md 的代码形态）
+├── shared/          # logging.py · config.py（用户偏好持久化，原子写）
 └── container.py
 spikes/              # 一次性验证脚本与结论（NOTES.md）
 tests/integration/   # CLI 端到端、GUI 冒烟、只读保证

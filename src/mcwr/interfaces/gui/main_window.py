@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
@@ -28,9 +29,26 @@ from mcwr.domain.models import CardId, WindowState
 from mcwr.interfaces.gui.board_view import BoardScene, BoardView
 from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.session import BoardSession
+from mcwr.interfaces.gui.theme import (
+    LIGHT,
+    Palette,
+    Theme,
+    ThemeMode,
+    palette_for,
+    resolve_theme,
+    system_is_dark,
+)
+from mcwr.shared.config import load_theme_mode, save_theme_mode
 from mcwr.shared.logging import logger, shorten
 
 ZOOM_PRESETS = ("50", "75", "100", "125", "150", "200")
+
+THEME_CHOICES: tuple[tuple[ThemeMode, str], ...] = (
+    (ThemeMode.SYSTEM, "跟随系统"),
+    (ThemeMode.LIGHT, "浅色"),
+    (ThemeMode.DARK, "深色"),
+)
+"""The three states of D-030; the labels are what the toolbar shows."""
 
 
 class MainWindow(QMainWindow):
@@ -50,19 +68,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Markdown Card Whiteboard Reader")
         self.resize(1400, 900)
 
+        self._persist = persist
         self._store = container.build_layout_store() if persist and store is None else store
         self.session = BoardSession(
             self, store=self._store, session_id=session_id, window_uuid=window_uuid
         )
-        self.scene = BoardScene(self)
+        self._theme_mode: ThemeMode = ThemeMode.SYSTEM
+        self._theme: Theme = LIGHT.theme
+        self._palette: Palette = LIGHT
+        self.scene = BoardScene(self, LIGHT)
         self.view = BoardView(self.scene, self)
         self.setCentralWidget(self.view)
         self._items: dict[CardId, CardItem] = {}
         self._zoom_box: QComboBox | None = None
+        self._theme_box: QComboBox | None = None
         self._overlay = QWidget(self)
         self._renderer = renderer
         self._renderer_error = ""
-        self._pixmaps: dict[tuple[CardId, float], QPixmap] = {}
+        self._pixmaps: dict[tuple[CardId, float, str], QPixmap] = {}
         self._image_queue: list[CardId] = []
         self._image_timer = QTimer(self)
         self._image_timer.setSingleShot(True)
@@ -74,6 +97,11 @@ class MainWindow(QMainWindow):
         self._build_actions()
         self._build_overlay()
         self._connect()
+        # The theme is applied before any document opens, so the first raster is already
+        # produced in the right colours (the image is theme-specific, spec §5).
+        self.apply_theme(
+            load_theme_mode() if persist else ThemeMode.SYSTEM, remember=False
+        )
         self._restore_window_state()
         self.statusBar().showMessage("open a Markdown file to begin (Ctrl+O)")
 
@@ -119,6 +147,92 @@ class MainWindow(QMainWindow):
         )
         super().closeEvent(event)
 
+    # ---------------------------------------------------------------------- theme
+
+    @property
+    def theme(self) -> Theme:
+        """The theme currently in use (``light`` or ``dark``)."""
+        return self._theme
+
+    @property
+    def theme_mode(self) -> ThemeMode:
+        """What the user picked: ``system``, ``light`` or ``dark``."""
+        return self._theme_mode
+
+    @property
+    def visual_palette(self) -> Palette:
+        """The palette currently in use (read-only view for tests).
+
+        Not named ``palette``: ``QWidget.palette()`` is Qt's ``QPalette`` accessor.
+        """
+        return self._palette
+
+    def apply_theme(self, mode: ThemeMode | str, *, remember: bool = True) -> Theme:
+        """Switch the whole window to ``mode`` and return the resolved theme (T-024 ③).
+
+        Only drawing changes: the canvas, every existing card and the render queue are
+        repainted/re-queued, while the document, the card tree and **every** ``CardLayout``
+        field stay exactly as they were. ``system`` resolves through the Windows app theme
+        (D-030); the choice is stored in the application data directory.
+        """
+        wanted = ThemeMode(str(mode))
+        theme = resolve_theme(wanted, system_dark=system_is_dark())
+        palette = palette_for(theme)
+        self._theme_mode = wanted
+        self._theme = theme
+        self._palette = palette
+        self.scene.set_palette(palette)
+        for item in self._items.values():
+            item.set_palette(palette)
+        self._apply_window_palette(palette)
+        self._sync_theme_box()
+        if remember and self._persist and not save_theme_mode(wanted.value):
+            logger().warning("the theme preference could not be saved")
+        # The raster is theme-specific (spec §5): drop the other theme's pixmaps, hide the
+        # now-mismatched images and let the queue re-render them in the new colours.
+        self._pixmaps = {
+            key: value for key, value in self._pixmaps.items() if key[2] == theme.value
+        }
+        for card_id, item in self._items.items():
+            if (card_id, self._current_bucket(), theme.value) not in self._pixmaps:
+                item.set_image(None)
+        self._queue_body_images()
+        return theme
+
+    def _apply_window_palette(self, palette: Palette) -> None:
+        """Chrome colours: the window, toolbar and status bar use the ``app_bg`` slot."""
+        self.setStyleSheet(
+            "QMainWindow, QToolBar, QStatusBar "
+            f"{{ background: {palette.app_bg}; color: {palette.text_primary}; }}"
+        )
+
+    def _sync_theme_box(self) -> None:
+        """Show the current mode without re-triggering the switch (``activated`` only)."""
+        box = self._theme_box
+        if box is None:
+            return
+        index = next(
+            (i for i, (mode, _) in enumerate(THEME_CHOICES) if mode is self._theme_mode), 0
+        )
+        if box.currentIndex() != index:
+            box.setCurrentIndex(index)
+
+    def _follow_the_system_scheme(self) -> None:
+        """Re-resolve ``跟随系统`` when Windows flips light/dark while the app runs."""
+        from PySide6.QtGui import QGuiApplication
+
+        existing = QGuiApplication.instance()
+        if existing is None:  # pragma: no cover - a window implies a QApplication
+            return
+        hints = cast(QGuiApplication, existing).styleHints()
+        changed = getattr(hints, "colorSchemeChanged", None)
+        if callable(changed):
+            changed.connect(self._on_system_scheme_changed)
+
+    def _on_system_scheme_changed(self) -> None:
+        if self._theme_mode is ThemeMode.SYSTEM:
+            self.apply_theme(ThemeMode.SYSTEM, remember=False)
+
     # ------------------------------------------------------------------ UI pieces
 
     def _build_actions(self) -> None:
@@ -142,6 +256,8 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.action_fit)
         toolbar.addSeparator()
         toolbar.addWidget(self._build_zoom_box())
+        toolbar.addSeparator()
+        toolbar.addWidget(self._build_theme_box())
 
     def _build_zoom_box(self) -> QComboBox:
         box = QComboBox(self)
@@ -157,6 +273,25 @@ class MainWindow(QMainWindow):
             )
         self._zoom_box = box
         return box
+
+    def _build_theme_box(self) -> QComboBox:
+        """The three-state theme switch of D-030 (跟随系统 / 浅色 / 深色)."""
+        box = QComboBox(self)
+        box.addItems([label for _, label in THEME_CHOICES])
+        box.setFixedWidth(110)
+        box.activated.connect(self._on_theme_activated)
+        self._theme_box = box
+        return box
+
+    def _on_theme_activated(self) -> None:
+        box = self._theme_box
+        if box is None:
+            return
+        index = box.currentIndex()
+        if 0 <= index < len(THEME_CHOICES):
+            mode = THEME_CHOICES[index][0]
+            theme = self.apply_theme(mode)
+            self.statusBar().showMessage(f"主题：{box.currentText()}（{theme.value}）")
 
     def _build_overlay(self) -> None:
         """Bottom-right buttons required by FR-4.5 and FR-5.1."""
@@ -191,6 +326,7 @@ class MainWindow(QMainWindow):
         self.view.zoom_changed.connect(self._on_zoom_changed)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._show_context_menu)
+        self._follow_the_system_scheme()
 
     # ------------------------------------------------------------------ documents
 
@@ -266,7 +402,7 @@ class MainWindow(QMainWindow):
             layout = self.session.layouts.get(card_id)
             if layout is None:
                 continue
-            item = CardItem(card, blocks, layout)
+            item = CardItem(card, blocks, layout, palette=self._palette)
             item.moved.connect(self._on_item_moved)
             self._items[card_id] = item
         self._reparent_items()
@@ -285,12 +421,13 @@ class MainWindow(QMainWindow):
         if document is None:
             return
         bucket = self._current_bucket()
+        theme = self._theme.value
         pending = [
             card_id
             for card_id, card in document.tree.cards.items()
             if card_id in self._items
             and needs_web_render(card)
-            and (card_id, bucket) not in self._pixmaps
+            and (card_id, bucket, theme) not in self._pixmaps
         ]
         if not pending:
             return
@@ -333,13 +470,18 @@ class MainWindow(QMainWindow):
                 self.session.failed.emit(f"body rendering unavailable: {self._renderer_error}")
                 return
             self._renderer = renderer
+        theme = self._theme.value
         path = card_image(
-            card, self.session.blocks, renderer=renderer, scale=self.view.zoom_percent() / 100.0
+            card,
+            self.session.blocks,
+            renderer=renderer,
+            scale=self.view.zoom_percent() / 100.0,
+            theme=theme,
         )
         if path is not None:
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                self._pixmaps[(card_id, self._current_bucket())] = pixmap
+                self._pixmaps[(card_id, self._current_bucket(), theme)] = pixmap
                 item.set_image(pixmap)
         else:
             reason = getattr(renderer, "last_error", None) or "unknown reason"

@@ -237,6 +237,8 @@ def _scripted_renderer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> QtWeb
     monkeypatch.setattr(renderer, "_missing_assets", list)
     monkeypatch.setattr(renderer, "_ensure_app", object)
     monkeypatch.setattr(renderer, "_ensure_view", lambda: None)
+    # The page layer is fake, so the theme switch (which talks to the page) is faked too.
+    monkeypatch.setattr(renderer, "_apply_page_theme", lambda _theme: True)
     monkeypatch.setattr(renderer, "_render_in_page", lambda **_: (200, 80))
     return renderer
 
@@ -300,3 +302,82 @@ def test_a_permanently_blank_raster_gives_up_after_the_bounded_ladder(
     assert attempts["n"] == _BLANK_ATTEMPTS, "the ladder must be bounded, not a retry loop"
     assert f"after {_BLANK_ATTEMPTS} attempt(s)" in (renderer.last_error or "")
     assert renderer.failures, "the reason must be recorded for the log/status message"
+
+
+# ------------------------------------------------------------------ theme (T-024 ④)
+
+
+def _mean_luminance(image_path: Path) -> float:
+    """Mean perceived brightness of a raster: light cards stay high, dark cards low."""
+    from PySide6.QtGui import QImage
+
+    image = QImage(str(image_path))
+    assert not image.isNull(), f"{image_path} is not a readable image"
+    rgb = image.convertToFormat(QImage.Format.Format_RGB32)
+    width, height, stride = rgb.width(), rgb.height(), rgb.bytesPerLine()
+    bits = bytes(rgb.constBits())
+    total = 0
+    sampled = 0
+    for y in range(0, height, 2):
+        row = bits[y * stride : (y + 1) * stride]
+        for offset in range(0, min(len(row), width * 4), 8):
+            red, green, blue = row[offset], row[offset + 1], row[offset + 2]
+            total += (red * 299 + green * 587 + blue * 114) // 1000
+            sampled += 1
+    assert sampled > 0
+    return total / sampled
+
+
+def _light_pixels(image_path: Path) -> int:
+    """Pixels that are near-white: the proof that ink was drawn on a dark fill."""
+    from PySide6.QtGui import QImage
+
+    image = QImage(str(image_path)).convertToFormat(QImage.Format.Format_RGB32)
+    width, height, stride = image.width(), image.height(), image.bytesPerLine()
+    bits = bytes(image.constBits())
+    light = 0
+    for y in range(0, height, 2):
+        row = bits[y * stride : (y + 1) * stride]
+        for offset in range(0, min(len(row), width * 4), 4):
+            if row[offset] > 180 and row[offset + 1] > 180 and row[offset + 2] > 180:
+                light += 1
+    return light
+
+
+def test_the_cache_key_separates_the_two_themes(renderer: QtWebCardRenderer) -> None:
+    """Visual spec §5: the theme is part of the digest, so a dark card is its own file."""
+    light = renderer.cache_path(kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0)
+    dark = renderer.cache_path(kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0, theme="dark")
+    assert light != dark
+    assert light == renderer.cache_path(
+        kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0, theme="light"
+    )
+    # An unknown theme must not fork the cache into a third namespace.
+    assert (
+        renderer.cache_path(kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0, theme="neon")
+        == light
+    )
+
+
+@pytest.mark.slow
+def test_a_dark_math_card_is_printed_on_the_dark_fill(renderer: QtWebCardRenderer) -> None:
+    """T-024 ④: dark really means dark — Chromium must print the fill, not white paper."""
+    light = renderer.render(kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0, theme="light")
+    dark = renderer.render(kind=CardKind.MATH_BLOCK, source=FORMULA, scale=1.0, theme="dark")
+    assert light is not None, f"light render failed: {renderer.last_error}"
+    assert dark is not None, f"dark render failed: {renderer.last_error}"
+    assert dark != light, "the two themes must never share one raster"
+    assert _mean_luminance(light) > 200.0, "the light theme must stay light"
+    assert _mean_luminance(dark) < 96.0, "the dark card was printed on a white fill"
+    assert _light_pixels(dark) > 50, "the formula must be drawn in light ink on the dark fill"
+    _save_artifact(dark, "render_card_math_dark_z1.0.png")
+
+
+@pytest.mark.slow
+def test_a_dark_mermaid_card_is_printed_on_the_dark_fill(renderer: QtWebCardRenderer) -> None:
+    """T-024 ④ for diagrams: the Mermaid dark theme must be applied, not just the CSS."""
+    dark = renderer.render(kind=CardKind.MERMAID, source=DIAGRAM, scale=1.0, theme="dark")
+    assert dark is not None, f"dark render failed: {renderer.last_error}"
+    assert _mean_luminance(dark) < 96.0, "the dark diagram was drawn on a white fill"
+    assert _light_pixels(dark) > 50, "the diagram's glyphs and edges must be visible"
+    _save_artifact(dark, "render_card_mermaid_dark_z1.0.png")

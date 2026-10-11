@@ -23,9 +23,13 @@ class FakeWebRenderer:
     def __init__(self, result: Path | None = None) -> None:
         self.result = result
         self.calls: list[tuple[CardKind, str, float]] = []
+        self.themes: list[str] = []
 
-    def render(self, *, kind: CardKind, source: str, scale: float) -> Path | None:
+    def render(
+        self, *, kind: CardKind, source: str, scale: float, theme: str = "light"
+    ) -> Path | None:
         self.calls.append((kind, source, scale))
+        self.themes.append(theme)
         return self.result
 
 
