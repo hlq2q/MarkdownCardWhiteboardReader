@@ -28,6 +28,7 @@ from mcwr.domain.models import CardId, WindowState
 from mcwr.interfaces.gui.board_view import BoardScene, BoardView
 from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.session import BoardSession
+from mcwr.shared.logging import logger, shorten
 
 ZOOM_PRESETS = ("50", "75", "100", "125", "150", "200")
 
@@ -185,7 +186,7 @@ class MainWindow(QMainWindow):
     def _connect(self) -> None:
         self.session.document_loaded.connect(self._rebuild_items)
         self.session.cards_changed.connect(self._apply_geometry)
-        self.session.status.connect(self.statusBar().showMessage)
+        self.session.status.connect(self._show_status)
         self.session.failed.connect(self._show_failure)
         self.view.zoom_changed.connect(self._on_zoom_changed)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -240,14 +241,21 @@ class MainWindow(QMainWindow):
     def _fit(self) -> None:
         self.view.fit_cards()
 
+    def _show_status(self, message: str) -> None:
+        """Status bar stays short (T-026 item 9); the full text is not lost, it is logged."""
+        seed = self.session.path.name if self.session.path is not None else "mcwr"
+        self.statusBar().showMessage(shorten(f"{seed}: {message}"))
+
     def _show_failure(self, message: str) -> None:
-        self.statusBar().showMessage(f"error: {message}")
+        logger().error("{}", message)
+        self._show_status(f"错误：{message}")
 
     # -------------------------------------------------------------------- drawing
 
     def _rebuild_items(self) -> None:
         for item in self._items.values():
-            self.scene.removeItem(item)
+            if item.scene() is self.scene:  # a detached item may already belong elsewhere
+                self.scene.removeItem(item)
         self._items.clear()
         document = self.session.document
         if document is None:
@@ -287,6 +295,10 @@ class MainWindow(QMainWindow):
         if not pending:
             return
         self._image_queue = pending
+        for card_id in pending:
+            item = self._items.get(card_id)
+            if item is not None:
+                item.set_pending(True)  # D-022 item 4: progress is visible while rendering
         self._image_timer.start(0)
 
     def _current_bucket(self) -> float:
@@ -331,9 +343,9 @@ class MainWindow(QMainWindow):
                 item.set_image(pixmap)
         else:
             reason = getattr(renderer, "last_error", None) or "unknown reason"
-            self.statusBar().showMessage(
-                f"{card.kind} card kept its text form: rendering unavailable ({reason})"
-            )
+            logger().error("card {} kept its text form: {}", card_id, reason)
+            self._show_status(f"{card.kind} 卡渲染失败")
+        item.set_pending(False)
         if self._image_queue:
             self._image_timer.start(0)
 

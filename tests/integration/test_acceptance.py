@@ -171,7 +171,7 @@ def test_acceptance_6b_changing_a_heading_level_is_a_major_change(
     assert window.session.refresh() is True
 
     assert window.session.layouts[code].x != 5000.0, "the level change rebuilds the board"
-    assert "rebuilt" in window.statusBar().currentMessage()
+    assert "重建" in window.statusBar().currentMessage()
 
 
 def test_acceptance_7_two_windows_are_independent(tmp_path: Path) -> None:

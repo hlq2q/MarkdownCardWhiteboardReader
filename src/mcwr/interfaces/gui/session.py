@@ -206,13 +206,9 @@ class BoardSession(QObject):
         self.document_loaded.emit()
         self.cards_changed.emit(tuple(self._layouts))
         if plan.major:
-            self.status.emit(
-                f"refreshed {path.name}: structure changed, the board was rebuilt from the document"
-            )
+            self.status.emit("结构变化较大，已按新结构重建")
         else:
-            self.status.emit(
-                f"refreshed {path.name}: {len(loaded.tree.cards)} cards ({new_count} new)"
-            )
+            self.status.emit(f"已刷新：{len(loaded.tree.cards)} 张卡片（新增 {new_count}）")
         return True
 
     # --------------------------------------------------------------- persistence
