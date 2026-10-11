@@ -15,8 +15,9 @@
 | 布局 / 拆出-还原 / 折叠 | ✅ | 32 项单测 |
 | 布局持久化（D9+D15 会话分片） | ✅ | 35 项单测 |
 | PySide6 GUI（拖动/缩放/右键/右下角按钮） | ✅ | 12 项离线 GUI 冒烟测试 + 真实平台启动验证 |
-| 刷新（结构优先重建，D11 判据） | ⏳ | refresh_document 切片在收敛中 |
-| 公式 / Mermaid 离屏渲染（D14） | ⏳ | spike 3 进行中 |
+| 刷新（结构优先重建，D11 判据） | ✅ | 42 项切片单测 + 端到端验收（改正文保留位置、改层级/加分隔线重建） |
+| 十项验收标准 | ✅ | tests/integration/test_acceptance.py（逐条对应 §1.5） |
+| 公式 / Mermaid 离屏渲染（D14） | ⏳ | spike 3 已证实可行（KaTeX 0.19.0 + Mermaid 已入库），生产切片进行中 |
 | 打包（PyInstaller onedir） | ⏳ | 未开始 |
 
 ## 运行
@@ -29,9 +30,9 @@ python -m uv run mcwr cards spikes/samples/sample.md --format json
 python -m uv run mcwr version
 ```
 
-GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击卡片居中、拖动卡片（子卡片跟随父卡片）、
+GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击卡片居中、拖动卡片（子卡片跟随父卡片，且不能拖出父卡片边界）、
 右键卡片 → 拖出为自由卡片 / 还原到父卡片 / 收回所有子卡片 / 折叠展开，右下角 **刷新** 与 **全部还原**。
-`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放。
+`Ctrl+N` 新建窗口（新进程，独立会话）、`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放。
 
 ## 开发
 

@@ -54,6 +54,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RET", "ARG", "PTH"]
 # Fakes must match Protocol signatures exactly (parameter names are part of the call
 # contract), so unused arguments are expected in tests.
 "**/test_*.py" = ["ARG002", "ARG005"]
+# spikes/ holds throwaway feasibility scripts (see the architecture skill §5): they are
+# deleted once their question is answered, so they are not held to the production bar.
+"spikes/**" = ["E501", "B023", "ARG001", "ARG002"]
 
 [tool.mypy]
 python_version = "3.12"

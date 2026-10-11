@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -108,6 +109,7 @@ class MainWindow(QMainWindow):
 
     def _build_actions(self) -> None:
         self.action_open = _action(self, "打开…", "Ctrl+O", self._choose_file)
+        self.action_new_window = _action(self, "新建窗口", "Ctrl+N", self._new_window)
         self.action_refresh = _action(self, "刷新", "F5", self._refresh)
         self.action_restore_all = _action(self, "全部还原", "Ctrl+Shift+R", self._restore_all)
         self.action_fit = _action(self, "适应视图", "Ctrl+0", self._fit)
@@ -116,6 +118,7 @@ class MainWindow(QMainWindow):
 
         toolbar = self.addToolBar("view")
         toolbar.setMovable(False)
+        toolbar.addAction(self.action_new_window)
         toolbar.addAction(self.action_open)
         toolbar.addAction(self.action_refresh)
         toolbar.addAction(self.action_restore_all)
@@ -195,6 +198,15 @@ class MainWindow(QMainWindow):
         )
         if selected:
             self.open_path(Path(selected))
+
+    def _new_window(self) -> None:
+        """Open another window in its own process; windows stay independent (FR-6.1/6.2)."""
+        from mcwr.interfaces.gui.app import spawn_new_window
+
+        started = spawn_new_window(None, parent_pid=os.getpid())
+        self.statusBar().showMessage(
+            "new window started (independent session)" if started else "could not start a window"
+        )
 
     def _refresh(self) -> None:
         if not self.session.is_open:
