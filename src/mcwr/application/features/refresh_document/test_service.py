@@ -86,13 +86,6 @@ def card_under(
     return matches[0]
 
 
-def card_owning(tree: CardTree, block_index: int) -> Card:
-    """The card owning ``block_index``; a heading card owns its own block too."""
-    matches = [card for card in tree.cards.values() if block_index in card.own_block_indexes]
-    assert len(matches) == 1, f"expected one card owning block {block_index}, got {len(matches)}"
-    return matches[0]
-
-
 def laid_out(card: Card) -> CardLayout:
     """A layout with a visibly non-default rectangle, so a lost merge is unmistakable."""
     layout = CardLayout(card_id=card.card_id)
@@ -148,7 +141,12 @@ FIRST_SECTION_ONLY = [
     code(2, "answer = 1"),
 ]
 HEADING_REMOVED = [heading(0, "Intro", 1), heading(1, "Extra", 2), code(2, "answer = 1")]
-CARD_REMOVED = [heading(0, "Intro", 1), code(1, "answer = 1"), code(2, "x", lang="bash")]
+CARD_REMOVED = [heading(0, "Intro", 1), code(1, "answer = 1"), code(2, "stays", lang="bash")]
+CARD_ADDED_AMONG_SIBLINGS = [
+    heading(0, "Intro", 1),
+    code(1, "lead = 0", lang="bash"),
+    code(2, "answer = 1"),
+]
 PARAGRAPHS_ONLY = [para(0, "Intro"), para(1, "same text")]
 CODE_ONLY = [code(0, "same text")]
 
@@ -172,6 +170,7 @@ NOT_MAJOR_CASES = (
     _Case("card added inside a heading", build(BASE), build(EXTENDED)),
     _Case("card added to a big section", build(BASE), build(FIRST_SECTION_ONLY)),
     _Case("card removed", build(CARD_REMOVED), build(BASE)),
+    _Case("card added among siblings", build(BASE), build(CARD_ADDED_AMONG_SIBLINGS)),
     _Case("heading renamed", build(BASE), build(RENAMED_HEADING)),
 )
 
@@ -612,14 +611,14 @@ def test_matching_is_independent_of_card_insertion_order() -> None:
 
 
 def test_content_hash_fallback_never_matches_across_card_kinds() -> None:
+    """A deleted code card must not hand its layout to the paragraph-bearing section."""
     old = build(CODE_ONLY)
     new = build(PARAGRAPHS_ONLY)
     assert structure_signature(old) == structure_signature(new)
 
     mapping = match_cards(old, new)
     assert mapping.added == ()
-    assert titled(old, "python").card_id in mapping.removed
-    assert mapping.kept == {titled(old, "Section 1").card_id: titled(new, "Section 1").card_id}
+    assert mapping.removed == (titled(old, "python").card_id,)
     assert_partition(mapping, old, new)
 
 
