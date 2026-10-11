@@ -1,6 +1,6 @@
 # ERRORS — 错误、根因与验证
 
-- 最后更新：2026-10-12 06:39:09 +08:00
+- 最后更新：2026-10-12 06:50:39 +08:00
 - 状态枚举：仅 open / fixed / wontfix
 - 说明：本轮（MVP 开发）实际发生的事故。可迁移的通用机制已在各条「防止复发」中指向 `pitfall-playbook` §13，此处只留细节。
 
@@ -248,3 +248,15 @@
 - 验证：同一时刻 `pytest src/mcwr/infrastructure/test_web_renderer.py -q` **退出码 0、17/17、0 次 registerTimer 噪音**；对照的既有 spike 在真实平台仍复现同样失败（说明是环境而非代码）。
 - 关联任务：T-024
 - 防止复发：①看到"渲染失败"先查 stderr 有没有 `registerTimer`/句柄噪音——有噪音即环境不可用，不能据此判代码；②真实平台验证尽量在句柄充足的新会话里做，并把同批日志里的环境噪音一并记录；③`offscreen` 通过而真实平台失败时，先跑一个**未改动**的对照脚本，再怀疑自己的改动（对应 pitfall-playbook §11 #26「不先复现就改根因」）。
+
+## E-021 升级后深色渲染报 `mcwrSetTheme is not a function`：渲染页用固定文件名，被 Chromium 磁盘缓存供了旧版页面
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：T-024 的真实平台运行里出现 `Uncaught TypeError: window.mcwrSetTheme is not a function`（画面其余表现正常，PNG 也照样出来了），因此不是"渲染全坏"，而是新加的能力在页面上不存在。
+- 报错/日志：QtWebEngine 的 JS 控制台消息 `Uncaught TypeError: window.mcwrSetTheme is not a function`；同一时刻页面里 `window.mcwrRender` **存在**且 `window.mcwrState === "ready"`，所以 `_ensure_view()` 的"页面已就绪"判定照样通过。
+- 根因：渲染页 URL 是固定的 `file:///.../Cache/web/_shell.html`，Chromium 把它当普通资源放进磁盘缓存；升级后新版本仍写同一个文件名，同一个 URL 就可能由**上一版本的缓存副本**应答，于是页面里只有旧脚本——有 `mcwrRender`、没有本版本新增的 `mcwrSetTheme`。生产路径（共享缓存目录）必现，而测试全部使用全新的临时缓存目录，所以这套测试完全测不到。
+- 修复：shell 改为**内容寻址**文件名 `_shell-<sha256(html) 前 12 位>.html`（`_shell_file_name()`）。内容一变 URL 就变，旧副本无法再被命中；旧 `_shell.html` 不再被引用，作为缓存垃圾留给 T-017 的容量策略清理。
+- 验证：①**升级场景的真实渲染**（共享缓存目录 + 旧 `_shell.html` 在场 + 新 payload 以避免 PNG 缓存命中）：`rendered=1 cache_hits=0 failed=0`、目录新增 `_shell-c6f56985d046.html`、**无 TypeError**、只剩两条无害的 WebEngine 提示；②确定性测试 `test_the_shell_file_is_content_addressed` 与 `test_the_shell_url_changes_when_the_shell_changes`；③`test_web_renderer.py` 19/19，全量 `pytest -q` 退出码 0（288 项），`ruff`/`mypy --strict` 干净。
+- 关联任务：T-024
+- 防止复发：①凡是会被浏览器/缓存插手的本地资源，URL 必须随内容变化（内容寻址或版本参数）；固定文件名 = 升级后可能加载旧内容。②"就绪"只证明页面**是旧的可用页面**，不证明它是**当前版本的页面**——探针要显式查新增能力的 `typeof`。③**别拿"共享缓存目录里跑一次"当验证**：先看 `cache_hits`/`rendered`，缓存命中时根本没有走被测路径（本轮我就先踩了一次：那次 `images=2` 其实是两张旧 PNG 的缓存命中，`_shell.html` 的 mtime 没变才露的馅）。

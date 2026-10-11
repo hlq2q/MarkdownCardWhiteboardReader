@@ -1,6 +1,6 @@
 # TASKS — 任务与状态
 
-- 最后更新：2026-10-12 06:39:09 +08:00
+- 最后更新：2026-10-12 06:50:39 +08:00
 - 状态枚举：仅 todo / doing / blocked / done
 
 ## 1. 当前目标
@@ -49,10 +49,12 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-021 | 目录卡片点击跳转（FR-2.4） | todo | 中 | 无（D-025 已确认纳入下一版） | 点击目录项后对应标题卡居中；测试断言 `view.center` 落在该卡矩形内 | 2–3 h | — | D-025 | 与 T-020 复用定位逻辑；优先级由「低」上调为「中」（用户已确认纳入） |
 | T-022 | 安装包与代码签名 | todo | 低 | 证书文件路径与口令（§4 阻塞项 1） | 产出可安装包并在干净环境安装后启动成功（截图/退出码） | 4–8 h | — | D-026 D-027 | 证书已确认具备；显示名字符串未定（D-026 proposed） |
 | T-023 | 初始化四件套（本次 state-keeper 任务） | done | 高 | 无 | 项目根存在 `PROJECT_MAP.md` / `TASKS.md` / `DECISIONS.md` / `ERRORS.md`；事实均带证据；`docs/traceability.md` 与四件套无重复主记录 | 1 h | 1 h | D-019 D-020 | 本轮完成 |
-| T-024 | 视觉规范 + 双主题实现 | done | 高 | 无 | ①`docs/visual-spec.md` 覆盖 D-021 全部条目 **✅**；②对比度经计算 ≥ 4.5:1（AA）、深色无纯黑、浅色无纯白 **✅**（脚本 `spikes/_out/contrast.py` + 单测 `test_theme.py` 钉住发布值）；③主题三态（跟随系统/浅色/深色）可切换且切换后 `CardLayout` **全字段与对象身份都不变** **✅**（`tests/integration/test_theme_switch.py` 6 项）；④深色下代码/公式/Mermaid 可读、缓存键含 theme **✅**（真实深色位图像素断言 + 文本卡像素断言 + `test_the_cache_key_separates_the_two_themes`） | 6–10 h | 3.5 h | D-021 D-030 D-031 E-019 | 证据：`ruff` 全绿；`mypy --strict` 76 文件 0 错误；`pytest -q` 退出码 0（**286 项**，较改动前 +27）；`test_web_renderer.py` 17/17（含 2 条真实深色渲染）；深色位图 `spikes/_out/render_card_math_dark_z1.0.png`、`render_card_mermaid_dark_z1.0.png`（已人工过目：深底浅字）。**真实平台**：主题三态切换在 `windows` 插件下实测通过（`spikes/spike_theme_switch_real.py` 退出码 0、布局/对象/文档均未变），但该次渲染失败属环境问题（本机会话 USER 句柄耗尽，既有 spike 同样失败）→ 见 **E-020**，故渲染判据以 offscreen 真实像素为准。**残留**：语法高亮未做、层级色条未做、浅色阴影为 1px 半透明近似（见 §4.1） |
+| T-024 | 视觉规范 + 双主题实现 | done | 高 | 无 | ①`docs/visual-spec.md` 覆盖 D-021 全部条目 **✅**；②对比度经计算 ≥ 4.5:1（AA）、深色无纯黑、浅色无纯白 **✅**（脚本 `spikes/_out/contrast.py` + 单测 `test_theme.py` 钉住发布值）；③主题三态（跟随系统/浅色/深色）可切换且切换后 `CardLayout` **全字段与对象身份都不变** **✅**（`tests/integration/test_theme_switch.py` 6 项）；④深色下代码/公式/Mermaid 可读、缓存键含 theme **✅**（真实深色位图像素断言 + 文本卡像素断言 + `test_the_cache_key_separates_the_two_themes`） | 6–10 h | 4 h | D-021 D-030 D-031 E-019 E-021 | 证据：`ruff` 全绿；`mypy --strict` 76 文件 0 错误；`pytest -q` 退出码 0（**286 项**，较改动前 +27）；`test_web_renderer.py` 17/17（含 2 条真实深色渲染）；深色位图 `spikes/_out/render_card_math_dark_z1.0.png`、`render_card_mermaid_dark_z1.0.png`（已人工过目：深底浅字）。**真实平台**：主题三态切换在 `windows` 插件下实测通过（`spikes/spike_theme_switch_real.py` 退出码 0、布局/对象/文档均未变），但该次渲染失败属环境问题（本机会话 USER 句柄耗尽，既有 spike 同样失败）→ 见 **E-020**，故渲染判据以 offscreen 真实像素为准。**残留**：语法高亮未做、层级色条未做、浅色阴影为 1px 半透明近似（见 §4.1）。**E-021 修复**：真实平台探测发现"升级后页面缺 `mcwrSetTheme`"（渲染页固定文件名被 Chromium 磁盘缓存供了旧版），改为内容寻址 `_shell-<digest>.html` 后，在共享缓存目录 + 旧 `_shell.html` 在场 + 新 payload 的条件下实测 `rendered=1 cache_hits=0 failed=0`、无 TypeError |
 | T-025 | 200 卡片上限与降级模式 | todo | 高 | 无（D-029 已定降级表现） | ①解析后暴露卡片总数与超限标记；②201 张卡片的合成文档打开后应用不卡死（可交互 ≤ 5 s）且状态栏给出超限提示；③`pytest` 新增用例覆盖 200（正常）与 201（降级：不再离屏渲染公式/Mermaid，按原文显示） | 3–4 h | — | D-023 D-029 | 依赖已解除 |
 | T-026 | 渲染稳定性 10 条逐条落地与验证 | done | 高 | T-016 | 对 D-022 的 10 条各给一条可读回证据 | 6–10 h | 3 h | D-022 E-016 E-017 | 10 条证据齐（详见备注） |
 | T-027 | 收敛 docs/traceability.md 与四件套边界 | done | 中 | 无 | traceability 只保留「决策 → 代码位置 → 测试名」映射与验收映射；理由/影响一律指向 `DECISIONS.md` | 0.5 h | 0.5 h | D-021 之后 | 本轮完成 |
+| T-028 | 卡片左侧 3 px 层级色条（4 档，取值见 D-032） | todo | 中 | 无 | 左侧 3 px 色条按嵌套深度取 `docs/visual-spec.md` §6.1 的 4 档值；浅/深各一套；第 5 级及更深沿用第 4 档；新增测试断言「深度→颜色」映射、3 px 宽度、两套主题取值互不相同 | 1–2 h | — | D-032 D-021 | 取值由用户给定；不启用蓝色备选组 |
+| T-029 | 代码卡片语法高亮（Pygments） | todo | 中 | 无 | `QTextDocument` 渲染路径按主题选用两套 Pygments 样式；浅/深下关键字/注释/字符串可区分；新增测试断言两套样式不同、深色下关键字与代码块底色对比度 ≥ 4.5:1 | 2–4 h | — | D-032 D-021 | `pygments` 已在依赖中；样式选择留在 interfaces/infrastructure，`application` 不得 import pygments |
 | — | **T-026 的 10 条证据**（下表为 T-026 行的展开，不单独编号） | | | | | | | |
 | ① | 分层：`domain`/`application` 不依赖 Qt 与具体库 | | | | `tests/integration/test_render_stability.py::test_item_1_application_and_domain_do_not_import_gui_or_libraries`（并断言扫描到 ≥20 个文件，防空跑通过） | | | | |
 | ② | 错误隔离：单卡渲染失败不影响整板 | | | | `tests/integration/test_body_render.py::test_a_failing_renderer_degrades_to_text_without_crashing` | | | | |
@@ -73,17 +75,22 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 
 > 已解除：显示名字符串（D-026 = `MarkdownCardWhiteboardReader`）、超限降级表现（D-029 = 停止离屏渲染富内容 + 原文 + 提示）。
 
-### 4.1 遗留项（等你决定后才建任务，暂不占用 T 编号）
+### 4.1 遗留项处理结果（用户已于 2026-10-12 答复，见 D-032）
 
-| # | 遗留项 | 现状 | 需要你的决定 |
+| # | 遗留项 | 你的答复 | 落地 |
 | --- | --- | --- | --- |
-| 1 | visual-spec §5 的「代码高亮」 | 只做到**按主题着色**（代码块底色/文字随主题、深色可读），全项目没有词法高亮 | 是否开新任务引入 Pygments 语法高亮（`pygments` 已在依赖里） |
-| 2 | visual-spec §6 的「卡片左侧 3 px 层级色条（4 档明度）」 | 未实现；层级目前由 24 px 父子缩进 + 标题栏字重 + 折叠图标表达 | 4 档明度的**具体取值**（spec 只写了「4 档明度」，未给数值，我不自造） |
-| 3 | 浅色主题阴影 `0 1px 2px rgba(15,23,42,0.08)` | 实现为 1 px 偏移的 8% 半透明圆角矩形（无模糊） | 是否要求真高斯模糊阴影（`QGraphicsDropShadowEffect`，有每卡渲染代价） |
+| 1 | 代码语法高亮（visual-spec §5） | 「需要」 | 已开任务 **T-029**（Pygments 两套样式） |
+| 2 | 层级色条 4 档取值（visual-spec §6） | 给出中性灰蓝 4 档、浅深各一套，第 5 级及更深沿用第 4 档 | 取值写入 `docs/visual-spec.md` §6.1；已开任务 **T-028** |
+| 3 | 浅色阴影模糊度 | 「不需要」 | 保持 1 px 偏移近似，不引入 `QGraphicsDropShadowEffect`（D-032） |
+
+> 遗留项清零：本节不再有"待你决定"的条目。
 
 ## 5. 下一步行动
 
-**唯一在办任务：无**（T-024 已完成）。下一个按 §1 顺序为 **T-025**（200 卡片上限与降级模式），等你确认后开始；D-028 规定一次只做一个任务。
+**唯一在办任务：无**（T-024 已完成，含 E-021 修复）。三个候选任务（依 §1 顺序）：
 
-1. 若你同意，我按 T-025 的验收做：①解析后暴露卡片总数与超限标记；②201 张卡片的合成文档打开后不卡死（可交互 ≤ 5 s）且状态栏给出超限提示；③新增用例覆盖 200（正常）与 201（降级：不再离屏渲染公式/Mermaid，按原文显示）。
-2. §4.1 的三项遗留项与 T-025 的先后顺序由你定；在你答复前我不动任何任务。
+1. **T-025** —— 200 卡片上限与降级模式（3–4 h）：§1 既定顺序的下一个；
+2. **T-028** —— 层级色条（1–2 h）：取值已齐，可把双主题的视觉闭环收掉；
+3. **T-029** —— Pygments 语法高亮（2–4 h）。
+
+等你指定一个；一次只做一个：每个任务有了验收证据、状态改 `done`、四件套更新并提交之后，才开下一个（D-028）。

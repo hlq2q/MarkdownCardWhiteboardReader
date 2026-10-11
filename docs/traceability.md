@@ -38,7 +38,8 @@
 | D-028 逐项完成 | `TASKS.md` 任务表（同时只允许 1 条 `doing`）、每个任务一次提交 | `git log --oneline`（一任务一提交） | ✅ |
 | D-029 超限降级表现 | `main_window._queue_body_images` 需按卡片总数短路（未实现） | 待 T-025 | ⏳ |
 | D-030 主题默认跟随系统 + 可切换 | `interfaces/gui/theme.py::resolve_theme` / `system_is_dark`、`main_window.apply_theme`、`shared/config.py` | `test_theme.py::test_follow_the_system_resolves_both_ways`、`test_config.py`、`test_theme_switch.py::test_the_chosen_mode_is_remembered_across_windows` | ✅ |
-| D-031 主题实现细节 | `theme.py`、`card_item.py::set_palette`、`web_renderer._ensure_page_theme` + `mcwrSetTheme` | `test_theme_switch.py::test_switching_the_theme_changes_no_layout_field`、`test_web_renderer.py::test_the_cache_key_separates_the_two_themes` | ✅ |
+| D-031 主题实现细节 | `theme.py`、`card_item.py::set_palette`、`web_renderer._ensure_page_theme` + `mcwrSetTheme` + `_shell_file_name` | `test_theme_switch.py::test_switching_the_theme_changes_no_layout_field`、`test_web_renderer.py::test_the_cache_key_separates_the_two_themes`、`::test_the_shell_file_is_content_addressed` | ✅ |
+| D-032 视觉遗留取值（高亮/色条/阴影） | 待 T-029（Pygments 样式）、T-028（3 px 色条，取值见 `docs/visual-spec.md` §6.1）；阴影保持 1 px 近似 | 待两个任务落地 | ⏳ |
 
 ## 2. 验收标准 → 测试
 
@@ -59,7 +60,7 @@
 
 | 缺口 | 决策 / 任务 | 状态 |
 | --- | --- | --- |
-| `docs/visual-spec.md` 未产出、双主题未实现 | D-021 / T-024 | ✅ 已交付（③④ 见 `test_theme_switch.py`）；遗留：语法高亮、层级色条、模糊阴影（`TASKS.md` §4.1） |
+| `docs/visual-spec.md` 未产出、双主题未实现 | D-021 / T-024 | ✅ 已交付（③④ 见 `test_theme_switch.py`，含 E-021 修复）；遗留已转为任务：语法高亮 **T-029**、层级色条 **T-028**（D-032），阴影不做模糊 |
 | 200 卡片上限与降级未实现 | D-023 D-029 / T-025 | ⏳ |
 | 渲染稳定性 10 条未逐条给出证据 | D-022 / T-026 | ✅ 10 条证据齐（`test_render_stability.py` + `docs/render-stability.md`） |
 | app 路径渲染偶发 xfail | E-013 / T-016 | ✅ 已修（连续 16 次全绿；根因 E-016/E-017） |
