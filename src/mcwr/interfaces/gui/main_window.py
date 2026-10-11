@@ -240,14 +240,17 @@ class MainWindow(QMainWindow):
         if document is None:
             return
         for card_id in reversed(document.tree.ordered_ids()):
-            item = self._items[card_id]
-            layout = self.session.layouts[card_id]
+            item = self._items.get(card_id)
+            layout = self.session.layouts.get(card_id)
+            if item is None or layout is None:
+                continue
             parent_id = document.tree.cards[card_id].parent_id
             parent_item = self._items.get(parent_id) if parent_id else None
             if layout.detached or parent_item is None:
                 scene_position = item.scenePos()
                 item.setParentItem(None)  # type: ignore[arg-type]  # None detaches in Qt
-                self.scene.addItem(item)
+                if item.scene() is None:
+                    self.scene.addItem(item)
                 item.setPos(scene_position)
             else:
                 item.setParentItem(parent_item)
@@ -255,8 +258,8 @@ class MainWindow(QMainWindow):
     def _apply_geometry(self, card_ids: tuple[CardId, ...]) -> None:
         """Push domain coordinates into Qt items (parents first, children offset)."""
         document = self.session.document
-        if document is None:
-            return
+        if document is None or not self._items:
+            return  # nothing is drawn yet; _rebuild_items applies geometry afterwards
         self._reparent_items()
         for card_id in card_ids:
             item = self._items.get(card_id)
