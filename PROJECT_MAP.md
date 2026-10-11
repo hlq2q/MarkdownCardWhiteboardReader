@@ -2,7 +2,7 @@
 
 - 项目名称：Markdown Card Whiteboard Reader（包名 `mcwr`，分发名 `markdown-card-whiteboard`）
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 03:20:00 +08:00
+- 最后更新：2026-10-12 03:55:00 +08:00
 
 ## 1. 项目目标
 
@@ -130,12 +130,9 @@ interfaces(cli, gui) ──► application(features + ports) ──► domain
 
 | # | 缺失信息 | 为什么需要 | 谁来补 | 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | 应用显示名的**具体字符串** | 窗口标题、安装包显示名、开始菜单项 | 用户 | open（D-026 为 proposed：`Markdown Card Whiteboard Reader` vs `MarkdownCardWhiteboardReader`；`%APPDATA%` 目录名 `MarkdownCardWhiteboardReader` 已定不变） |
-| 2 | 视觉规范的具体取值 | 界面实现与主题切换 | 代码（T-024） | scheduled：由 D-021 决定产出 `docs/visual-spec.md` 作为唯一来源，取值在该文件定义 |
-| 3 | 超限（>200 卡片）降级的具体表现 | T-025 的验收标准 | 用户 | open（见 `TASKS.md` §4 阻塞项 3） |
-| 4 | 签名证书文件路径与口令 | 才能执行签名 | 用户 | open（证书已确认具备，路径/口令未提供） |
+| 1 | 签名证书文件路径与口令（用户答复：稍后提供） | 才能做出安装包并签名 | 用户 | open（T-022 的唯一阻塞） |
 
-> 已确认项（不再列为待补）：单文档规模上限 = 200 卡片（D-023）；任务列表单独成卡（D-024）；目录卡片点击跳转纳入下一版（D-025）；代码签名证书具备（D-027）；渲染稳定性为最高优先级（D-022）。
+> 已全部确认（不再列为待补）：显示名 = `MarkdownCardWhiteboardReader`（D-026）；超限（>200 卡片）降级 = 停止离屏渲染富内容、显示原文并提示（D-029）；主题默认跟随系统 + 可手动切换（D-030）；任务列表单独成卡（D-024）；目录卡片点击跳转纳入下一版（D-025）；签名证书具备（D-027）。
 
 ## 9. 文档边界（单一来源）
 
@@ -147,4 +144,5 @@ interfaces(cli, gui) ──► application(features + ports) ──► domain
 | `ERRORS.md` | 事故的现象 / 根因 / 修复 / 验证 | 通用规则（进 `pitfall-playbook` §13） |
 | `docs/requirements-spec.md` | 需求条款与验收标准原文 | 状态与进度 |
 | `docs/traceability.md` | 决策 → 代码位置 → 测试名的映射 | 决策理由与影响（一律指 `DECISIONS.md`） |
-| `docs/visual-spec.md`（待建） | 视觉取值（配色/字体/尺寸/主题）的唯一来源 | 决策理由（指 `DECISIONS.md` D-021） |
+| `docs/visual-spec.md` | 视觉取值（16 个语义色位、6 类字体、字号层级、9 类卡片尺寸、双主题）的唯一来源 | 决策理由（指 `DECISIONS.md` D-021 / D-030） |
+| `docs/render-stability.md` | 渲染稳定性的成熟库清单与逐条约束证据 | 决策理由（指 `DECISIONS.md` D-022） |
