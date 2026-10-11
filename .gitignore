@@ -17,6 +17,8 @@ htmlcov/
 build/
 dist/
 *.spec
+!/packaging/mcwr.spec
+selfcheck.json
 
 # Spikes / scratch output (spike scripts themselves are tracked)
 spikes/_out/

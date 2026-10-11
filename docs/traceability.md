@@ -42,6 +42,6 @@
 |---|---|
 | 公式 / Mermaid 实际渲染 | **已达标**（printToPdf + QPdfDocument.render）；历史缺陷记录：：渲染器独立可用（12 项单测 + 人工看图确认），但经 App 路径时 Python 侧轮询超时，卡片退回原文渲染。复现：`python -m uv run python spikes/spike_app_render_probe.py`（页面 `mcwrRenders` 递增、`mcwrState=done`，而渲染器 stats 仍为 `rendered=0, failed=N`）。另有一次 App 运行把同一张 Mermaid 图缓存到两个卡片键下（跨图串帧），已加回归守卫 `tests/integration/test_body_render.py`（当前 xfail） |
 | 目录卡片点击跳转（FR-2.4） | 未实现；spec §5.1 的 MVP 清单未列入该项，大纲导航在 §5.2 归入 V1.1 |
-| 打包（NFR-7） | 未开始：PyInstaller onedir + 资源（含 `src/mcwr/assets/web`）路径尚未验证 |
+| 打包 | **已完成并验证**：`packaging/mcwr.spec`（onedir，GUI 子系统）+ `--self-check` 自检入口。交付形态实测退出码 0（frozen=true，公式/Mermaid 各出图）。过程中修掉两个只有打包形态才暴露的缺陷：① `excludes` 误排 `PySide6.QtWebChannel` 导致 frozen 下渲染器 import 失败（卡片静默退回文本）；② 渲染器构造异常发生在 Qt 槽内被吞掉，现已捕获并在状态栏/自检报告中暴露 |
 | 多进程并发写同一分片 | 设计上由 D15 会话分片规避；未做真实双进程并发压测 |
 | 单文档超大（>2000 卡片） | 未压测，spec §7.2 第 16 条待你决定上限行为 |

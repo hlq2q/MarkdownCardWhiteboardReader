@@ -18,7 +18,7 @@
 | 刷新（结构优先重建，D11 判据） | ✅ | 42 项切片单测 + 端到端验收（改正文保留位置、改层级/加分隔线重建） |
 | 十项验收标准 | ✅ | tests/integration/test_acceptance.py（逐条对应 §1.5） |
 | 公式 / Mermaid 离屏渲染（D14） | ⏳ | spike 3 已证实可行（KaTeX 0.19.0 + Mermaid 已入库），生产切片进行中 |
-| 打包（PyInstaller onedir） | ⏳ | 未开始 |
+| 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行
 
@@ -48,6 +48,11 @@ python -m uv run pytest -q                                   # 全部测试
 python -m uv run ruff check . && python -m uv run ruff format --check .
 python -m uv run mypy src
 python -m uv run python spikes/spike_real_window.py          # 真实平台启动一次（1.5s 自动退出）
+
+# 打包（onedir）与交付形态验证
+python -m uv run pyinstaller packaging/mcwr.spec --noconfirm
+dist\mcwr\mcwr.exe --self-check                              # 返回码 0 = 打开+公式/Mermaid 出图正常
+$env:MCWR_SELF_CHECK_REPORT="$PWD\selfcheck.json"; dist\mcwr\mcwr.exe --self-check   # 报告落到文件
 ```
 
 > 本机 pip 全局索引指向 `pypi.tuna.tsinghua.edu.cn`，该镜像对 `uv` 包返回 403；

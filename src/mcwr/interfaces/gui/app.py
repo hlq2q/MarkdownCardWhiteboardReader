@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -60,10 +61,96 @@ def spawn_new_window(path: Path | None = None, *, parent_pid: int | None = None)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse an optional file argument and start the GUI."""
-    args = sys.argv[1:] if argv is None else argv
+    """Parse arguments and either start the GUI or run the packaged self-check.
+
+    ``--self-check [file.md]`` exists so a **packaged build** can be verified without a
+    human at the keyboard: it opens a document (a generated one by default), waits for the
+    math/mermaid cards to rasterize, prints a JSON summary and exits non-zero when the
+    window or the renderer did not work.
+    """
+    args = sys.argv[1:] if argv is None else list(argv)
+    if args and args[0] == "--self-check":
+        target = Path(args[1]) if len(args) > 1 else None
+        return run_self_check(target)
     path = Path(args[0]) if args and not args[0].startswith("-") else None
     return run(path)
+
+
+SELF_CHECK_DOCUMENT = """# Packaged check
+
+Prose that must stay inside a card.
+
+```mermaid
+graph TD;
+    A[WebEngine] --> B[PNG];
+```
+
+$$
+\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
+$$
+
+| column | value |
+| --- | --- |
+| cards | 5 |
+"""
+
+
+def run_self_check(path: Path | None = None) -> int:  # pragma: no cover - packaged only
+    """Headless-ish smoke test for a frozen build: open, lay out, rasterize, report."""
+    import json
+    import tempfile
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    from mcwr.application.features.render_card.service import needs_web_render
+    from mcwr.interfaces.gui.main_window import MainWindow
+
+    prepare_webengine()
+    app = QApplication.instance() or QApplication(sys.argv)
+    document_path = path
+    if document_path is None:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".md", delete=False, encoding="utf-8"
+        ) as handle:
+            handle.write(SELF_CHECK_DOCUMENT)
+            document_path = Path(handle.name)
+
+    window = MainWindow(persist=False)
+    window.show()
+    opened = window.open_path(document_path)
+
+    report: dict[str, object] = {"opened": opened, "document": str(document_path)}
+    if opened and window.session.document is not None:
+        card_ids = [
+            card.card_id
+            for card in window.session.document.tree.cards.values()
+            if needs_web_render(card) and card.card_id in window.card_items
+        ]
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if all(window.card_items[cid].has_image for cid in card_ids):
+                break
+            time.sleep(0.05)
+        rendered = [cid for cid in card_ids if window.card_items[cid].has_image]
+        report |= {
+            "cards": len(window.card_items),
+            "blocks": len(window.session.document.blocks),
+            "web_cards": len(card_ids),
+            "rendered_images": len(rendered),
+            "renderer_error": getattr(window._renderer, "last_error", None),  # noqa: SLF001
+            "renderer_build_error": window.renderer_build_error,
+            "frozen": bool(getattr(sys, "frozen", False)),
+        }
+    report_json = json.dumps(report, ensure_ascii=False)
+    # A windowed build has no console, so the report also goes to a file when asked.
+    report_path = os.environ.get("MCWR_SELF_CHECK_REPORT", "").strip()
+    if report_path:
+        Path(report_path).write_text(report_json + "\n", encoding="utf-8")
+    print(report_json)
+    ok = bool(report.get("opened")) and int(str(report.get("rendered_images", 0))) >= 2
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

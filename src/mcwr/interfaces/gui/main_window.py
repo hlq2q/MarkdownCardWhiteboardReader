@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self._zoom_box: QComboBox | None = None
         self._overlay = QWidget(self)
         self._renderer = renderer
+        self._renderer_error = ""
         self._pixmaps: dict[tuple[CardId, float], QPixmap] = {}
         self._image_queue: list[CardId] = []
         self._image_timer = QTimer(self)
@@ -197,6 +198,11 @@ class MainWindow(QMainWindow):
         """The scene items, keyed by card id (read-only view for tests and tools)."""
         return dict(self._items)
 
+    @property
+    def renderer_build_error(self) -> str:
+        """Why the body renderer could not be built, or ``""`` when it was fine."""
+        return self._renderer_error
+
     def open_path(self, path: Path) -> bool:
         opened = self.session.open(path)
         if opened:
@@ -308,7 +314,12 @@ class MainWindow(QMainWindow):
 
         renderer = self._renderer
         if renderer is None:
-            renderer = container.build_web_renderer()
+            try:
+                renderer = container.build_web_renderer()
+            except Exception as exc:  # noqa: BLE001 - a broken bundle must not silently skip
+                self._renderer_error = f"{type(exc).__name__}: {exc}"
+                self.session.failed.emit(f"body rendering unavailable: {self._renderer_error}")
+                return
             self._renderer = renderer
         path = card_image(
             card, self.session.blocks, renderer=renderer, scale=self.view.zoom_percent() / 100.0
