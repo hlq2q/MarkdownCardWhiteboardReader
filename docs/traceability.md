@@ -32,7 +32,7 @@
 | D-022 渲染稳定性最高优先级 | `web_renderer.shared_renderer`（单例）、`_render` 空白重试、`card_item` 占位徽标、`shared/logging.py`、`tests/integration/conftest.py` | `tests/integration/test_render_stability.py`（10 条各一测）、`test_body_render.py`、`infrastructure/test_web_renderer.py`；全量 286 项 | ✅ |
 | D-023 200 卡片上限 | `domain/models.MAX_CARDS`、`LoadedDocument.card_count`/`.over_limit`、`BoardSession.card_count`/`.over_limit` | `application/features/load_document/test_service.py`（200 不越界 / 201 越界 / 钉住 `MAX_CARDS == 200`）、`tests/integration/test_card_limit.py` | ✅ |
 | D-024 任务列表单独成卡 | `domain/enums.CARD_KIND_BY_BLOCK[TASK_LIST]`（既有行为） | `infrastructure/test_markdown_it_adapter.py::test_task_list_counts_checked_items` | ✅ |
-| D-025 目录卡片跳转 | `main_window`（未实现） | 待 T-021 | ⏳ |
+| D-025 目录卡片跳转 | `application/features/build_toc/`、`card_item.link_clicked`/`anchor_at`、`session.reveal`、`main_window._on_link_clicked`、`markdown_it_adapter._stamp_toc_entries` | `tests/integration/test_toc_navigation.py`（`QTest` 真点击 → 视口中心落在目标卡内、折叠祖先逐级展开）、`build_toc/test_service.py`、`detach_restore/test_service.py::test_expanding_ancestors_*` | ✅ |
 | D-026 显示名统一 | 窗口标题、README（现状 `Markdown Card Whiteboard Reader`） | — | ❓ 待确认字符串 |
 | D-027 代码签名 | 构建/签名脚本（未实现） | 待 T-022 | ⏳ |
 | D-028 逐项完成 | `TASKS.md` 任务表（同时只允许 1 条 `doing`）、每个任务一次提交 | `git log --oneline`（一任务一提交） | ✅ |
@@ -64,7 +64,7 @@
 | 200 卡片上限与降级未实现 | D-023 D-029 / T-025 | ✅ 已交付（`test_card_limit.py`；201 卡实测打开 0.03–0.05 s、零离屏渲染） |
 | 渲染稳定性 10 条未逐条给出证据 | D-022 / T-026 | ✅ 10 条证据齐（`test_render_stability.py` + `docs/render-stability.md`） |
 | app 路径渲染偶发 xfail | E-013 / T-016 | ✅ 已修（连续 16 次全绿；根因 E-016/E-017） |
-| 目录卡片点击跳转未实现 | D-025 / T-021 | ⏳ |
+| 目录卡片点击跳转未实现 | D-025 / T-021 | ✅ 已交付（`test_toc_navigation.py`：真点击居中 + 折叠祖先展开） |
 | 渲染缓存无容量上限 | T-017 | ⏳ |
 | 大文档未压测 | T-018 | ⏳ |
 | 安装包与签名未做（证书已具备，路径未提供） | D-027 / T-022 | ⏳ |

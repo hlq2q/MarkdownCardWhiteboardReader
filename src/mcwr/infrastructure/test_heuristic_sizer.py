@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from mcwr.domain.enums import BlockKind, CardKind
-from mcwr.domain.models import Block, Card
+from mcwr.domain.models import TOC_ENTRIES_ATTR, Block, Card
 from mcwr.infrastructure.heuristic_sizer import HeuristicSizeEstimator
 
 
@@ -63,3 +63,33 @@ def test_rich_card_kinds_get_extra_room() -> None:
     text = sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (0,)), blocks=blocks, width=400)
     image = sizer.estimate_height(card(CardKind.IMAGE, (0,)), blocks=blocks, width=400)
     assert image > text
+
+
+def test_a_toc_card_is_sized_by_its_generated_entries() -> None:
+    """T-021: the card draws one line per heading, not the one-line ``[TOC]`` marker."""
+    sizer = HeuristicSizeEstimator(char_width=10.0, line_height=20.0)
+    marker = Block(
+        index=0,
+        kind=BlockKind.TOC,
+        raw_text="[TOC]",
+        text_normalized="[TOC]",
+        attrs={TOC_ENTRIES_ATTR: "6"},
+    )
+    height = sizer.estimate_height(card(CardKind.TOC, (0,)), blocks={0: marker}, width=400)
+    assert height >= 6 * 20.0
+
+    plain = Block(index=1, kind=BlockKind.TOC, raw_text="[TOC]", text_normalized="[TOC]")
+    short = sizer.estimate_height(card(CardKind.TOC, (1,)), blocks={1: plain}, width=400)
+    assert short < height, "without the stamp the marker itself is one line"
+
+
+def test_a_broken_toc_stamp_falls_back_to_one_line() -> None:
+    sizer = HeuristicSizeEstimator()
+    weird = Block(
+        index=0,
+        kind=BlockKind.TOC,
+        raw_text="[TOC]",
+        text_normalized="[TOC]",
+        attrs={TOC_ENTRIES_ATTR: "many"},
+    )
+    assert sizer.estimate_height(card(CardKind.TOC, (0,)), blocks={0: weird}, width=400) > 0

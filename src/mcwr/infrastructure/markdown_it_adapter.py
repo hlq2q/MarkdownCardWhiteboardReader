@@ -7,6 +7,8 @@ degrade to an ``unknown`` block so the raw text is never lost (FR-1.5).
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from mdit_py_plugins.dollarmath import dollarmath_plugin
@@ -14,10 +16,28 @@ from mdit_py_plugins.tasklists import tasklists_plugin
 
 from mcwr.domain.enums import BlockKind
 from mcwr.domain.ids import normalize_text
-from mcwr.domain.models import Block, InlineSpan, SourceSpan
+from mcwr.domain.models import TOC_ENTRIES_ATTR, Block, InlineSpan, SourceSpan
 
 _TOC_MARKERS = frozenset({"[TOC]", "[[TOC]]"})
 _LIST_OPEN_TYPES = frozenset({"bullet_list_open", "ordered_list_open"})
+
+
+def _stamp_toc_entries(blocks: tuple[Block, ...]) -> tuple[Block, ...]:
+    """Record on every ``[TOC]`` block how many heading entries it will list (FR-2.4).
+
+    The card's body is generated from the heading cards, so its height must follow the entry
+    count rather than the one-line ``[TOC]`` marker; the parser is the only layer that sees
+    the whole document, hence the stamp.
+    """
+    headings = sum(1 for block in blocks if block.kind is BlockKind.HEADING)
+    if not headings:
+        return blocks
+    return tuple(
+        replace(block, attrs={**block.attrs, TOC_ENTRIES_ATTR: str(headings)})
+        if block.kind is BlockKind.TOC
+        else block
+        for block in blocks
+    )
 
 
 def build_parser() -> MarkdownIt:
@@ -87,7 +107,7 @@ class _BlockCollector:
             else:
                 self._emit(BlockKind.UNKNOWN, token, token.content)
                 index += 1
-        return tuple(self._blocks)
+        return _stamp_toc_entries(tuple(self._blocks))
 
     def _emit(
         self,

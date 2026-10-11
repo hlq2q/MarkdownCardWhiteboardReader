@@ -28,6 +28,13 @@ the heaviest thing in the application, so dropping it is what keeps a 201+ card 
 interactive instead of turning it into a stall.
 """
 
+TOC_ENTRIES_ATTR: Final[str] = "toc_entries"
+"""``Block.attrs`` key: how many headings a ``[TOC]`` block will list as clickable entries.
+
+Stamped by the parser, which is the only place that sees the whole document: the size
+estimator receives one card's own block and could not count the headings itself.
+"""
+
 
 # --------------------------------------------------------------------------- blocks
 

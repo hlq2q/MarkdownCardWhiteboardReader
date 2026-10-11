@@ -10,6 +10,7 @@ from mcwr.application.features.build_card_tree.service import build_card_tree
 from mcwr.application.features.detach_restore.service import (
     can_detach,
     detach_card,
+    expand_ancestors,
     reclaim_children,
     restore_all,
     restore_card,
@@ -169,6 +170,41 @@ def test_unknown_card_is_a_programming_error() -> None:
         detach_card(tree, layouts, "no-such-card")
     with pytest.raises(KeyError):
         toggle_collapse(tree, layouts, "no-such-card")
+    with pytest.raises(KeyError):
+        expand_ancestors(tree, layouts, "no-such-card")
+
+
+def test_expanding_ancestors_opens_every_folded_parent() -> None:
+    tree, layouts = fixture()
+    intro = card_id_of(tree, "Intro")
+    deep = card_id_of(tree, "Deep")
+
+    toggle_collapse(tree, layouts, intro)
+    assert layouts[intro].collapsed is True
+
+    change = expand_ancestors(tree, layouts, deep)
+    assert change.affected == (intro,), "only the folded ancestor is touched"
+    assert change.relayout is True
+    assert layouts[intro].collapsed is False
+
+
+def test_expanding_ancestors_is_a_no_op_for_a_reachable_card() -> None:
+    tree, layouts = fixture()
+    deep = card_id_of(tree, "Deep")
+    change = expand_ancestors(tree, layouts, deep)
+    assert change.changed is False
+    assert change.relayout is False
+
+
+def test_expanding_ancestors_touches_no_geometry() -> None:
+    tree, layouts = fixture()
+    intro = card_id_of(tree, "Intro")
+    deep = card_id_of(tree, "Deep")
+    toggle_collapse(tree, layouts, intro)
+    before = {card_id: (box.x, box.y, box.width, box.height) for card_id, box in layouts.items()}
+    expand_ancestors(tree, layouts, deep)
+    after = {card_id: (box.x, box.y, box.width, box.height) for card_id, box in layouts.items()}
+    assert after == before
 
 
 def test_missing_layout_is_created_on_demand() -> None:
