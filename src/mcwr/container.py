@@ -52,10 +52,12 @@ def new_window_uuid() -> str:
 def build_web_renderer() -> WebCardRenderer:
     """The offscreen KaTeX/Mermaid rasterizer (decision D14).
 
-    Constructing it does not start the web engine: the first render does, and every
-    failure degrades to ``None`` so cards fall back to their text form.
+    Returned as a **process-wide singleton**: QtWebEngine cannot initialise twice cleanly
+    in one process, and a second hidden view measured an 11x slowdown (ERRORS.md E-016).
+    Constructing it starts nothing; the first render does, and every failure degrades to
+    ``None`` so cards keep their text form.
     """
     from mcwr.infrastructure.app_paths import assets_dir, cache_dir
-    from mcwr.infrastructure.web_renderer import QtWebCardRenderer
+    from mcwr.infrastructure.web_renderer import shared_renderer
 
-    return QtWebCardRenderer(assets_dir(), cache_dir() / "web")
+    return shared_renderer(assets_dir(), cache_dir() / "web")
