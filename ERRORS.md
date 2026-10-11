@@ -151,14 +151,16 @@
 ## E-013 全量套件下 app 路径渲染偶发 0/2（xfail），单独运行正常
 
 - 日期：2026-10-12
-- 状态：fixed（2026-10-12 定位并修复；根因见下，与 E-016 / E-017 是同一现象的两个叠加原因）
-- 现象：全量 `pytest -q` 中 `test_two_web_cards_do_not_render_the_same_image` 出现 xfail（`only 0/2 cards got an image`），同一测试单独运行通过；复现率约 2/10。
-- 报错/日志：`XFAIL ... only 0/2 cards got an image`；后续测得真凶是 `render failed: rasterized image is blank`（E-017）与进程内第二个 WebEngine 视图（E-016）。
-- 根因（已验证）：① 每个测试各自建窗口并按 **25 s** 预算排空渲染队列，而冷启动 WebEngine + 两张位图实测约 **20 s/测试**（≈85% 预算被吃掉），全量套件里稍有额外负载就越界；② 约 20% 的运行里 Mermaid 卡的 PDF 栅格化返回空白且**不重试**（E-017）；③ 同进程内多个渲染器实例互相争用（E-016），把冷渲染从 17.2 s 拖到 200.7 s。
-- 修复：① 渲染集成测试改为**每模块一次渲染会话**、预算提到 90 s（≈4.5× 实测），并把实测耗时作为性能断言（`PERF_CEILING_S = 60`）；② 渲染器对空白栅格**自动重试一次**（E-017）；③ 渲染器改为**进程级单例**，非渲染类集成测试用空渲染器（E-016）；④ 排空循环在渲染器已给出最终失败时快速失败，避免 90 s 空等。
-- 验证：修复前 10 次全量运行 2 次失败（各 95 s）；修复后**连续 16 次全量运行全绿**（`251 passed`，每次 17–18 s，0 xfail）。单文件冷缓存 4 项 17.95 s。
-- 关联任务：T-016（已 done）
-- 防止复发：慢测试的预算必须按**实测最坏值 × 系数**设定并留证据；`xfail` 只能表示「环境不可用」，不得用于掩盖抖动；共享资源上的断言不得使用绝对值（见 E-018）。
+- 状态：**open（2026-10-12 回归：原判据不成立）**
+- 现象：全量套件中 `test_body_render.py` 只剩 1/2 张 web 卡出图，排空预算耗尽（95 s），卡片保持纯文本；同一状态下**隔离运行全部通过**。
+- 报错/日志：
+  - 首次观测：`XFAIL ... only 0/2 cards got an image`（复现率约 2/10）
+  - 修复尝试后观测：`AssertionError: only 1/2 math/mermaid cards rendered within 90s; renderer last error: render failed after a retry: rasterized image is blank`（失败卡为 Mermaid `7ba10a0bc608`），日志同时有 `card 7ba10a0bc608 kept its text form: render failed after a retry: rasterized image is blank`
+- 根因：**未定位（推测，置信度：中）**。已排除：残留浏览器进程（`QtWebEngineProcess` 计数 0）、纯随机抖动（同日连续 2 次全量均失败，隔离运行同状态 2/2 通过）、空白栅格无重试（重试已存在，重试后仍空白）。剩余假设：`src/mcwr/infrastructure/test_web_renderer.py` 与 `tests/integration/test_body_render.py` 共享**同一进程级渲染器**（E-016 的单例），前者的失败模式用例会改写共享实例的设置（`bucket_step`、`timeout_ms`）或把页面留在打印即空白的状态。
+- 修复（部分，未完成）：① 渲染集成测试改为每模块一次会话、预算 90 s、性能上限 60 s；② 空白栅格自动重试一次（`stats["retried"]`）；③ 渲染器进程单例 + 非渲染测试空渲染器隔离；④ 断言改增量。
+- 验证：修复后曾**连续 16 次全量全绿**（251 项，17–18 s）——但该证据随后被推翻：加入 T-026 的测试与日志改动后，全量套件连续 2 次 `2 failed, 255 passed in 95.02s`；同时 `spikes/spike_kind_crosstalk.py` 与 `pytest tests/integration/test_body_render.py`（隔离）均通过。
+- 关联任务：**T-016（已从 done 退回 todo）**
+- 防止复发：跨模块共享单例资源时，测试之间必须隔离可变设置（或禁止测试改写共享实例的配置）；「连续 N 次全绿」不足以判定偶发缺陷修复，必须同时证明**失败模式已被理解**，否则只是概率下降。
 
 ## E-016 同一进程创建第二个 WebEngine 视图，渲染慢 11 倍
 

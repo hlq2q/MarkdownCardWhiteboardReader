@@ -41,7 +41,7 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-013 | 十项验收标准端到端断言 | done | 高 | T-012 | `test_acceptance.py` 11 项通过，逐条对应 spec §1.5 | — | — | 无 | commit `b33296c` |
 | T-014 | 离屏渲染切片：KaTeX/Mermaid → 位图卡片 | done | 高 | T-011 | 46 项渲染测试通过；App 内实测数学卡出 `E = mc²`、Mermaid 卡出流程图且 md5 不同 | — | — | D-003 D-007 D-014 E-007 E-008 E-009 | commit `0a54bb5` `593105b` |
 | T-015 | PyInstaller onedir 打包 + 交付形态自检 | done | 高 | T-014 | `dist\mcwr\mcwr.exe --self-check spikes\samples\sample.md` 退出码 0，`frozen=true`、`cards=19`、`rendered_images=2` | — | — | E-010 E-011 E-012 E-014 | commit `48c7218` |
-| T-016 | 定位并修掉 app 路径渲染的偶发抖动 | done | 高 | 无 | 连续 10 次全量运行 `pytest -q` 中 `test_body_render.py` 不再出现 xfail，且报告 `rendered_images=2/2` | 2–4 h | 2 h | E-013 E-016 E-017 E-018 | **实测连续 16 次全绿**（`251 passed`，17–18 s/次）；修复前 10 次里 2 次失败（95 s） |
+| T-016 | 定位并修掉 app 路径渲染的偶发抖动（**2026-10-12 退回**） | todo | 最高 | 无 | 连续 10 次全量运行 `pytest -q` 中 `test_body_render.py` 不再出现 xfail，且报告 `rendered_images=2/2` | 2–4 h | 3 h | E-013（open） E-016 E-017 E-018 | 新增判据：**隔离运行与全量运行都必须连续 10 次全绿**；不接受「只在隔离下通过」。回归证据：加入 T-026 改动后全量连续 2 次 `2 failed, 255 passed in 95.02s`，报错 `render failed after a retry: rasterized image is blank`（Mermaid 卡），而同状态隔离运行通过。假设：两个测试模块共享进程级渲染器（E-016 单例）导致设置/页面状态互相污染 |
 | T-017 | 给渲染缓存加容量上限 | todo | 中 | 无 | `QtWebCardRenderer` 在缓存文件数超过上限时按最近使用淘汰；新增单测断言「写入 N+1 个后目录文件数 ≤ N」 | 1–2 h | — | D-014 | C 建议 LRU ~256 条 / 10–20 MB |
 | T-018 | 大文档性能压测 | todo | 中 | 无 | 生成 500 与 1000 卡片的合成文档，记录「打开到可交互」与「拖动帧率」两组实测数字进 `docs/`；若 >2 s 或 <30 fps 则开新任务 | 3–5 h | — | — | spec NFR-2 目前只有 100 卡片假设 |
 | T-019 | 搜索并定位卡片（V1.1） | todo | 中 | 无 | 输入关键字 → 命中卡片居中并高亮；新增集成测试断言命中卡片 id 与视口中心坐标 | 4–6 h | — | D-012 | spec §5.2 V1.1 候选 |
@@ -74,6 +74,10 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 > 已解除：显示名字符串（D-026 = `MarkdownCardWhiteboardReader`）、超限降级表现（D-029 = 停止离屏渲染富内容 + 原文 + 提示）。
 
 ## 5. 下一步行动
+
+**当前有两个在办事项，需用户裁决先后（D-028 要求一次只做一个）**：T-024（视觉规范已交付，双主题实现未开始）与 T-016（退回：渲染抖动回归，最高优先级）。按 D-022「稳定性优先」我建议**先做 T-016**。
+
+**若按建议：唯一在办任务 = T-016**（把 `doing` 让给 T-016，T-024 留在 `doing` 之外等下一轮）。
 
 **唯一在办任务：T-024**（视觉规范 + 双主题；D-028 规定一次只做一个任务）。
 
