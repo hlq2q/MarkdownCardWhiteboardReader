@@ -381,3 +381,31 @@ def test_a_dark_mermaid_card_is_printed_on_the_dark_fill(renderer: QtWebCardRend
     assert _mean_luminance(dark) < 96.0, "the dark diagram was drawn on a white fill"
     assert _light_pixels(dark) > 50, "the diagram's glyphs and edges must be visible"
     _save_artifact(dark, "render_card_mermaid_dark_z1.0.png")
+
+
+def test_the_shell_file_is_content_addressed(tmp_path: Path) -> None:
+    """E-021: the shell URL must change with its content, or Chromium serves a stale copy.
+
+    A constant ``_shell.html`` URL was answered from the previous version's disk cache after
+    an upgrade: the page had ``mcwrRender`` and reported ready, but had no ``mcwrSetTheme``,
+    so every dark render raised "not a function" while the light path looked healthy.
+    """
+    renderer = QtWebCardRenderer(ASSETS_ROOT, tmp_path)
+    shell = renderer._write_shell()
+    assert shell.is_file()
+    assert shell.name.startswith("_shell-") and shell.name.endswith(".html")
+    assert shell.name != "_shell.html", "the pre-E-021 name must not be reused"
+
+    text = shell.read_text(encoding="utf-8")
+    assert "mcwrSetTheme" in text and "mcwrRender" in text
+    assert renderer._write_shell() == shell, "the same content keeps one file"
+
+
+def test_the_shell_url_changes_when_the_shell_changes() -> None:
+    """The digest in the name is what makes a stale cached page unreachable."""
+    from mcwr.infrastructure.web_renderer import _shell_file_name
+
+    first = _shell_file_name("<html>one</html>")
+    assert first == _shell_file_name("<html>one</html>")
+    assert first != _shell_file_name("<html>two</html>")
+    assert first.startswith("_shell-") and first.endswith(".html")

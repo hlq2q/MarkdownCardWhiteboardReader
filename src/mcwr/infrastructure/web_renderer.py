@@ -83,7 +83,16 @@ _THEME_DARK: Final[str] = "dark"
 """The two raster themes: the cache digest and the page both key off exactly these words."""
 _STAGE_WIDTH: Final[int] = 480
 """CSS width of the render stage: a representative card-body width on the whiteboard."""
-_SHELL_NAME: Final[str] = "_shell.html"
+_SHELL_NAME_PREFIX: Final[str] = "_shell-"
+"""The shell file is **content-addressed** (``_shell-<digest>.html``), never ``_shell.html``.
+
+Chromium caches ``file://`` URLs in its disk cache, so a constant name can be answered from
+the copy a *previous* version wrote: the page then still has ``mcwrRender`` and reports
+``ready``, but lacks whatever the new build added (that is exactly how the theme switch
+failed with ``window.mcwrSetTheme is not a function`` — see ERRORS.md E-021). A digest in the
+name makes the URL change whenever the shell changes, so a stale copy can never be served.
+"""
+_SHELL_DIGEST_CHARS: Final[int] = 12
 _PDF_NAME: Final[str] = "_page.pdf"
 _MIN_SCALE: Final[float] = 0.25
 _MIN_BUCKET_STEP: Final[float] = 0.01
@@ -820,10 +829,20 @@ class QtWebCardRenderer:
             dark_fg=DARK.text_primary,
             ui_font=UI_FONT,
         )
-        shell = self.cache_dir / _SHELL_NAME
+        shell = self.cache_dir / _shell_file_name(html)
         shell.write_text(html, encoding="utf-8")
         self._shell_path = shell
         return shell
+
+
+def _shell_file_name(html: str) -> str:
+    """Content-addressed file name for the shell (see ``_SHELL_NAME_PREFIX``).
+
+    The name is derived from the HTML itself, so a changed shell is a changed URL and the
+    browser cannot answer the load from a previous version's cached copy.
+    """
+    digest = hashlib.sha256(html.encode("utf-8")).hexdigest()[:_SHELL_DIGEST_CHARS]
+    return f"{_SHELL_NAME_PREFIX}{digest}.html"
 
 
 def _normalize_theme(theme: str) -> str:
