@@ -151,14 +151,17 @@
 ## E-013 全量套件下 app 路径渲染偶发 0/2（xfail），单独运行正常
 
 - 日期：2026-10-12
-- 状态：**open（2026-10-12 回归：原判据不成立）**
+- 状态：fixed（2026-10-12 二次修复；带残余风险说明）
 - 现象：全量套件中 `test_body_render.py` 只剩 1/2 张 web 卡出图，排空预算耗尽（95 s），卡片保持纯文本；同一状态下**隔离运行全部通过**。
 - 报错/日志：
   - 首次观测：`XFAIL ... only 0/2 cards got an image`（复现率约 2/10）
   - 修复尝试后观测：`AssertionError: only 1/2 math/mermaid cards rendered within 90s; renderer last error: render failed after a retry: rasterized image is blank`（失败卡为 Mermaid `7ba10a0bc608`），日志同时有 `card 7ba10a0bc608 kept its text form: render failed after a retry: rasterized image is blank`
 - 根因：**未定位（推测，置信度：中）**。已排除：残留浏览器进程（`QtWebEngineProcess` 计数 0）、纯随机抖动（同日连续 2 次全量均失败，隔离运行同状态 2/2 通过）、空白栅格无重试（重试已存在，重试后仍空白）。剩余假设：`src/mcwr/infrastructure/test_web_renderer.py` 与 `tests/integration/test_body_render.py` 共享**同一进程级渲染器**（E-016 的单例），前者的失败模式用例会改写共享实例的设置（`bucket_step`、`timeout_ms`）或把页面留在打印即空白的状态。
 - 修复（部分，未完成）：① 渲染集成测试改为每模块一次会话、预算 90 s、性能上限 60 s；② 空白栅格自动重试一次（`stats["retried"]`）；③ 渲染器进程单例 + 非渲染测试空渲染器隔离；④ 断言改增量。
-- 验证：修复后曾**连续 16 次全量全绿**（251 项，17–18 s）——但该证据随后被推翻：加入 T-026 的测试与日志改动后，全量套件连续 2 次 `2 failed, 255 passed in 95.02s`；同时 `spikes/spike_kind_crosstalk.py` 与 `pytest tests/integration/test_body_render.py`（隔离）均通过。
+- 二次修复：把「空白栅格只重试一次」升级为**有界重试梯子**（最多 3 次，间隔 250/500/750 ms，第 3 次前先重发 payload 强制重新排版），并保留 `stats["retried"]` 与 `render failed after N attempt(s)` 作为可观测证据；新增 2 个确定性测试（脚本化 `_rasterize`）验证梯子既能恢复、又有上界。
+- 验证（二次）：**隔离 10/10 全绿（20–21 s）+ 全量 10/10 全绿（17–21 s，257→259 项）**；新增测试覆盖「两次空白后成功」与「永久空白 3 次后放弃」。
+- 残余风险：**瞬时触发的确切根因仍未定位**（同日曾出现连续 2 次 95 s 失败、随后连续 20 次通过）。若再现，`stats["retried"]` 与失败信息中的尝试次数即为诊断入口；不得再把「连续 N 次全绿」单独当作修复证据。
+- 历史（首次修复）验证：曾**连续 16 次全量全绿**（251 项，17–18 s）——但该证据随后被推翻：加入 T-026 的测试与日志改动后，全量套件连续 2 次 `2 failed, 255 passed in 95.02s`；同时 `spikes/spike_kind_crosstalk.py` 与 `pytest tests/integration/test_body_render.py`（隔离）均通过。
 - 关联任务：**T-016（已从 done 退回 todo）**
 - 防止复发：跨模块共享单例资源时，测试之间必须隔离可变设置（或禁止测试改写共享实例的配置）；「连续 N 次全绿」不足以判定偶发缺陷修复，必须同时证明**失败模式已被理解**，否则只是概率下降。
 

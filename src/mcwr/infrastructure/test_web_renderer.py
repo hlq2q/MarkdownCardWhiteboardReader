@@ -229,3 +229,74 @@ def test_the_blank_guard_rejects_a_flat_image() -> None:
     for x in range(20, 180):
         drawn.setPixelColor(x, 40, drawn.pixelColor(20, 40).darker(400))
     assert not _is_blank(drawn)
+
+
+def _scripted_renderer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> QtWebCardRenderer:
+    """A renderer whose page layer is faked, so the retry ladder can be driven exactly."""
+    renderer = QtWebCardRenderer(ASSETS_ROOT, tmp_path)
+    monkeypatch.setattr(renderer, "_missing_assets", list)
+    monkeypatch.setattr(renderer, "_ensure_app", object)
+    monkeypatch.setattr(renderer, "_ensure_view", lambda: None)
+    monkeypatch.setattr(renderer, "_render_in_page", lambda **_: (200, 80))
+    return renderer
+
+
+def _drawn_image() -> object:
+    from PySide6.QtGui import QImage
+
+    image = QImage(200, 80, QImage.Format.Format_RGB32)
+    image.fill("#ffffff")
+    for x in range(0, 40, 2):
+        for y in range(0, 40, 2):
+            image.setPixelColor(x, y, image.pixelColor(0, 0).darker(400))
+    return image
+
+
+def test_a_blank_raster_is_retried_and_then_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T-016: the blank-raster ladder must recover, not lose the card on the first try."""
+    renderer = _scripted_renderer(tmp_path, monkeypatch)
+    attempts = {"n": 0}
+
+    def fake_rasterize(*, size: tuple[int, int], scale: float) -> object:
+        del size, scale
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            renderer._last_reason = "rasterized image is blank"
+            return None
+        return _drawn_image()
+
+    monkeypatch.setattr(renderer, "_rasterize", fake_rasterize)
+
+    path = renderer.render(kind=CardKind.MATH_BLOCK, source="x^2 + y^2", scale=1.0)
+
+    assert path is not None, f"the ladder should recover: {renderer.last_error}"
+    assert attempts["n"] == 3, "two blank rasters then a good one must be enough"
+    assert renderer.stats["retried"] >= 1
+    assert renderer.stats["rendered"] == 1
+
+
+def test_a_permanently_blank_raster_gives_up_after_the_bounded_ladder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T-016: no unbounded retry (D-022 item 8) — exactly `_BLANK_ATTEMPTS` tries, then fail."""
+    from mcwr.infrastructure.web_renderer import _BLANK_ATTEMPTS
+
+    renderer = _scripted_renderer(tmp_path, monkeypatch)
+    attempts = {"n": 0}
+
+    def always_blank(*, size: tuple[int, int], scale: float) -> object:
+        del size, scale
+        attempts["n"] += 1
+        renderer._last_reason = "rasterized image is blank"
+        return None
+
+    monkeypatch.setattr(renderer, "_rasterize", always_blank)
+
+    path = renderer.render(kind=CardKind.MERMAID, source="graph TD; A-->B;", scale=1.0)
+
+    assert path is None
+    assert attempts["n"] == _BLANK_ATTEMPTS, "the ladder must be bounded, not a retry loop"
+    assert f"after {_BLANK_ATTEMPTS} attempt(s)" in (renderer.last_error or "")
+    assert renderer.failures, "the reason must be recorded for the log/status message"

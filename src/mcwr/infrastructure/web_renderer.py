@@ -105,7 +105,9 @@ _UNIFORM_RANGE: Final[int] = 24
 _BLANK_SCAN_STEP: Final[int] = 4
 """Rows and pixels skipped while looking for contrast in a raster (see ``_is_blank``)."""
 _RETRY_PAUSE_MS: Final[int] = 250
-"""Pause before re-printing after a blank raster (lets the page finish painting)."""
+"""Pause before re-printing after a blank raster (grows with each attempt)."""
+_BLANK_ATTEMPTS: Final[int] = 3
+"""Bounded attempts against a blank raster; no unbounded retry loop (D-022 item 8)."""
 DEFAULT_TIMEOUT_MS: Final[int] = 15000
 """Default per-step budget for starting Chromium, loading a page or rendering a payload.
 
@@ -322,20 +324,27 @@ class QtWebCardRenderer:
             if isinstance(size, str):
                 return self._fail(f"render failed: {size}")
         image = self._rasterize(size=size, scale=self._scale_that_fits(size, bucket))
-        if image is None and "blank" in self._last_reason:
-            # A blank raster used to be final, and about one run in five lost the Mermaid
-            # card to it (ERRORS.md E-017). The page is still fine, so ask Chromium to
-            # print again before giving up: D-022 item 5 requires an automatic retry, not a
-            # silent downgrade on the first bad raster.
-            self._pump(_RETRY_PAUSE_MS)
-            self._last_reason = "blank raster on the first attempt; retrying once"
+        attempts = 1
+        while image is None and "blank" in self._last_reason and attempts < _BLANK_ATTEMPTS:
+            # A blank raster is the rasterizer's dominant transient (ERRORS.md E-013/E-017):
+            # the page is fine, Chromium just printed before the payload was laid out. Retry
+            # with a growing pause, and from the second retry on re-issue the payload so the
+            # page performs a *fresh* layout pass instead of reprinting a stale one.
+            attempts += 1
+            self._pump(_RETRY_PAUSE_MS * attempts)
+            if attempts > 2:
+                self._last_reason = f"blank raster (attempt {attempts - 1}); re-rendering"
+                rendered = self._render_in_page(kind=kind, body=body)
+                if not isinstance(rendered, str):
+                    size = rendered
+                else:  # pragma: no cover - the page answered the first time, so this is rare
+                    return self._fail(f"render failed while retrying: {rendered}")
             image = self._rasterize(size=size, scale=self._scale_that_fits(size, bucket))
-            if image is None:
-                return self._fail(f"render failed after a retry: {self._last_reason}")
             self.stats["retried"] += 1
-            return self._store(image, path)
         if image is None:
-            return self._fail(f"render failed: {self._last_reason}")
+            return self._fail(
+                f"render failed after {attempts} attempt(s): {self._last_reason}"
+            )
         return self._store(image, path)
 
     def _scale_that_fits(self, size: tuple[int, int], bucket: float) -> float:
