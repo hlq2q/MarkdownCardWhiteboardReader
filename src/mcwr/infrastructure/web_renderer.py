@@ -104,6 +104,8 @@ _UNIFORM_RANGE: Final[int] = 24
 """Per-channel spread below which an image counts as one flat colour, i.e. blank."""
 _BLANK_SCAN_STEP: Final[int] = 4
 """Rows and pixels skipped while looking for contrast in a raster (see ``_is_blank``)."""
+_RETRY_PAUSE_MS: Final[int] = 250
+"""Pause before re-printing after a blank raster (lets the page finish painting)."""
 DEFAULT_TIMEOUT_MS: Final[int] = 15000
 """Default per-step budget for starting Chromium, loading a page or rendering a payload.
 
@@ -197,6 +199,37 @@ window.mcwrState = "ready";
 """
 
 
+_VIEWS_CREATED = 0
+"""How many hidden web views this process has created.
+
+One per process is the design (decision D-022 item 8, resource management): a second view
+in the same process measured a **11x** slowdown (17.2 s -> 200.7 s for the same two-card
+render, see ERRORS.md E-016), because QtWebEngine cannot initialise twice cleanly. Tests
+assert on this counter so the invariant cannot regress silently.
+"""
+
+_SHARED: dict[str, QtWebCardRenderer] = {}
+
+
+def views_created() -> int:
+    """Number of hidden web views created in this process (0 before any render)."""
+    return _VIEWS_CREATED
+
+
+def shared_renderer(assets_root: Path, cache_dir: Path) -> QtWebCardRenderer:
+    """Return the process-wide renderer, creating it on first use.
+
+    Production has one window per process, so a singleton is the honest shape; it also
+    makes it impossible for a caller to spawn a second Chromium by accident.
+    """
+    key = "renderer"
+    existing = _SHARED.get(key)
+    if existing is None:
+        existing = QtWebCardRenderer(assets_root, cache_dir)
+        _SHARED[key] = existing
+    return existing
+
+
 class QtWebCardRenderer:
     """Renders a math/Mermaid card to a cached PNG through one reused offscreen web page.
 
@@ -224,7 +257,7 @@ class QtWebCardRenderer:
         self.failures: list[str] = []
         """Every failure reason in order; the GUI reads the last one for its warning."""
         self.last_error: str | None = None
-        self.stats: dict[str, int] = {"rendered": 0, "cache_hits": 0, "failed": 0}
+        self.stats: dict[str, int] = {"rendered": 0, "cache_hits": 0, "failed": 0, "retried": 0}
         """Observable cache/render counters: ``rendered`` never counts a cache hit."""
         self._app: QApplication | None = None
         self._holder: QWidget | None = None
@@ -289,6 +322,18 @@ class QtWebCardRenderer:
             if isinstance(size, str):
                 return self._fail(f"render failed: {size}")
         image = self._rasterize(size=size, scale=self._scale_that_fits(size, bucket))
+        if image is None and "blank" in self._last_reason:
+            # A blank raster used to be final, and about one run in five lost the Mermaid
+            # card to it (ERRORS.md E-017). The page is still fine, so ask Chromium to
+            # print again before giving up: D-022 item 5 requires an automatic retry, not a
+            # silent downgrade on the first bad raster.
+            self._pump(_RETRY_PAUSE_MS)
+            self._last_reason = "blank raster on the first attempt; retrying once"
+            image = self._rasterize(size=size, scale=self._scale_that_fits(size, bucket))
+            if image is None:
+                return self._fail(f"render failed after a retry: {self._last_reason}")
+            self.stats["retried"] += 1
+            return self._store(image, path)
         if image is None:
             return self._fail(f"render failed: {self._last_reason}")
         return self._store(image, path)
@@ -495,6 +540,8 @@ class QtWebCardRenderer:
         settings.setAttribute(QWebEngineSettings.WebAttribute.PrintElementBackgrounds, True)
         view.resize(_VIEW_WIDTH, _VIEW_HEIGHT)
         view.show()
+        global _VIEWS_CREATED
+        _VIEWS_CREATED += 1
         self._holder = holder
         self._view = view
         loaded = {"ok": False}

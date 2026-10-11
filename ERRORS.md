@@ -151,14 +151,50 @@
 ## E-013 全量套件下 app 路径渲染偶发 0/2（xfail），单独运行正常
 
 - 日期：2026-10-12
-- 状态：open
-- 现象：全量 `pytest -q` 中 `test_two_web_cards_do_not_render_the_same_image` 出现 1 次 xfail（`only 0/2 cards got an image`），同一测试单独运行连续 2 次均通过；随后两次全量运行也未复现。
-- 报错/日志：`XFAIL ... app-path rendering is unreliable: the page renders but the Python-side poll times out ...`（该文案随后已按 E-009 修复结果更新为「渲染器不可用」含义）。
-- 根因：**推测（置信度：中）**——25 s 排空预算在全量套件（多个 GUI/WebEngine 测试连续运行）下可能被冷启动 Chromium 吃掉，或页面预热时序导致单卡渲染耗时超过预算；未定位到确定性触发条件。
-- 修复：未修（等 T-016 定位）。
-- 验证：未验证（单测 2/2 通过、全量 2 次通过，1 次 xfail，样本不足以判定）。
+- 状态：fixed（2026-10-12 定位并修复；根因见下，与 E-016 / E-017 是同一现象的两个叠加原因）
+- 现象：全量 `pytest -q` 中 `test_two_web_cards_do_not_render_the_same_image` 出现 xfail（`only 0/2 cards got an image`），同一测试单独运行通过；复现率约 2/10。
+- 报错/日志：`XFAIL ... only 0/2 cards got an image`；后续测得真凶是 `render failed: rasterized image is blank`（E-017）与进程内第二个 WebEngine 视图（E-016）。
+- 根因（已验证）：① 每个测试各自建窗口并按 **25 s** 预算排空渲染队列，而冷启动 WebEngine + 两张位图实测约 **20 s/测试**（≈85% 预算被吃掉），全量套件里稍有额外负载就越界；② 约 20% 的运行里 Mermaid 卡的 PDF 栅格化返回空白且**不重试**（E-017）；③ 同进程内多个渲染器实例互相争用（E-016），把冷渲染从 17.2 s 拖到 200.7 s。
+- 修复：① 渲染集成测试改为**每模块一次渲染会话**、预算提到 90 s（≈4.5× 实测），并把实测耗时作为性能断言（`PERF_CEILING_S = 60`）；② 渲染器对空白栅格**自动重试一次**（E-017）；③ 渲染器改为**进程级单例**，非渲染类集成测试用空渲染器（E-016）；④ 排空循环在渲染器已给出最终失败时快速失败，避免 90 s 空等。
+- 验证：修复前 10 次全量运行 2 次失败（各 95 s）；修复后**连续 16 次全量运行全绿**（`251 passed`，每次 17–18 s，0 xfail）。单文件冷缓存 4 项 17.95 s。
+- 关联任务：T-016（已 done）
+- 防止复发：慢测试的预算必须按**实测最坏值 × 系数**设定并留证据；`xfail` 只能表示「环境不可用」，不得用于掩盖抖动；共享资源上的断言不得使用绝对值（见 E-018）。
+
+## E-016 同一进程创建第二个 WebEngine 视图，渲染慢 11 倍
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：渲染集成测试单独运行 17.2 s；在全量套件（`src/mcwr/infrastructure/test_web_renderer.py` 先跑过）中同一段渲染耗时 **200.7 s**，并因此触发性能断言失败。
+- 报错/日志：`AssertionError: cold render took 200.7s, ceiling is 60s`；`--durations` 显示除该 setup 外所有用例均为毫秒级。
+- 根因（已验证）：`MainWindow` 在 `renderer=None` 时惰性调用 `container.build_web_renderer()`，而集成套件里 **11 处**窗口各建一个渲染器实例 → 同进程出现多个隐藏 `QWebEngineView`。QtWebEngine 在同进程内不支持干净的重复初始化，第二个视图带来数量级退化（渲染器自身 docstring 早已声明「一个进程一个页面」，但没有任何机制强制）。
+- 修复：`web_renderer.shared_renderer()` 提供**进程级单例**（`container.build_web_renderer()` 改用它）；`tests/integration/conftest.py` 把容器工厂替换为空渲染器，使非渲染类集成测试完全不起 Chromium；渲染类测试（两个模块）都通过 `shared_renderer` 取同一实例；新增 `views_created()` 计数器供测试断言不变量。
+- 验证：全量套件 **204.67 s（1 failed, 250 passed）→ 16.63 s（251 passed）**，约 12× 提速；`views_created() <= 1` 断言常驻于渲染测试。
+- 关联任务：T-016 T-026（对应 D-022 第 8 条资源管理）
+- 防止复发：单进程单例型资源（浏览器引擎、GPU、数据库句柄）必须有显式单例入口 + 计数器，让「多实例」成为可测事实而不是性能玄学。
+
+## E-017 约 20% 的运行里 Mermaid 卡栅格化为空白，且不重试
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：全量套件约 2/10 的运行里，两张 web 卡只有一张出图；失败卡永久保持纯文本，排空循环因此空等到 90 s。
+- 报错/日志：`renderer last error: render failed: rasterized image is blank`（对应卡片为 Mermaid）。
+- 根因（已验证）：`printToPdf` → `QPdfDocument.render` 路径偶发得到近纯色帧（页面尚未完成绘制/布局时打印），而 `_render` 把「空白」当作**终局失败**直接返回 None。这违反 D-022 第 5 条「缓存失效或异常时不能导致崩溃，应自动降级重试或重新渲染」。
+- 修复：`_render` 在失败原因含 `blank` 时暂停 250 ms 后**再打印并栅格化一次**；成功则计入 `stats["retried"]`，仍失败才上报（错误信息带 `after a retry`）。
+- 验证：改前 10 次全量运行 2 红（各 95 s）；改后 **16 次连续全绿**（251 passed，17–18 s）。`stats` 新增 `retried` 计数器可观测重试是否发生。
+- 关联任务：T-016 T-026（对应 D-022 第 5 条）
+- 防止复发：任何「一次失败即放弃」的外部渲染/导出路径都要有一次重试，并把重试次数暴露成计数器，否则偶发失败会被当成环境噪声。
+
+## E-018 共享单例后，绝对计数断言变脆弱（`rendered == 1` 实际为 4）
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：把渲染器改成进程单例后，`test_a_formula_renders_to_a_png_with_visible_content` 失败：`assert 4 == 1`（期望本模块只渲染 1 次）。
+- 报错/日志：`> assert renderer.stats["rendered"] == 1 / E assert 4 == 1`。
+- 根因：该断言假设「渲染器只被本测试文件使用」。单例把它变成跨模块共享状态，先跑的 `tests/integration/test_body_render.py` 已渲染 2 个 payload，计数自然不为 1 —— 与实现无关，是**测试对共享资源使用绝对值断言**。
+- 修复：把该文件的计数断言改为增量或下界（`rendered >= 1`、`failed >= 1`），保留「缓存命中不增加 rendered」的增量断言（该处本来就是 `before/after` 形式）。
+- 验证：全量套件 16 次连续全绿；`ruff`/`mypy` 干净。
 - 关联任务：T-016
-- 防止复发：慢测试的预算应按「最坏观测值 × 系数」设定并记录实测；xfail 只能用于环境不可用，不能用于掩盖抖动（否则回归被吞）。**这条需要独立的定位轮次**。
+- 防止复发：共享/单例资源上的断言只用「增量」或「不变量」，不用绝对值；测试顺序变化不应改变结果。
 
 ## E-014 用管道末位退出码判断子进程结果，掩盖了失败
 

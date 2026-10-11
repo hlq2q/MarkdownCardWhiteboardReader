@@ -21,7 +21,7 @@
 | D-011 刷新判据 | `application/features/refresh_document/service.py` | `refresh_document/test_service.py`（42 项）、`test_acceptance.py::test_acceptance_6_refresh_keeps_layout_unless_the_structure_changes` / `..._6b_changing_a_heading_level_is_a_major_change` | ✅ |
 | D-012 增强功能归属 | 折叠已实现；搜索/大纲见 T-019/T-020 | — | ✅（MVP 部分） |
 | D-013 交付落点 | `docs/`、`src/mcwr/`、四件套在项目根 | — | ✅ |
-| D-014 离屏渲染 + 档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/`、`main_window._queue_body_images` | `render_card/test_service.py`（34）+ `infrastructure/test_web_renderer.py`（12）+ `tests/integration/test_body_render.py`（2） | ✅（E-013 偶发未定位） |
+| D-014 离屏渲染 + 档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/`、`main_window._queue_body_images` | `render_card/test_service.py`（34）+ `infrastructure/test_web_renderer.py`（12）+ `tests/integration/test_body_render.py`（4） | ✅（E-013/E-016/E-017 已修） |
 | D-015 会话分片 | `json_layout_store.py::_adopt` | `test_json_layout_store.py`、`test_gui_smoke.py::test_a_new_session_does_not_share_the_previous_layout`、`test_acceptance.py::test_acceptance_8_a_restart_restores_the_stored_layout` | ✅ |
 | D-016 命名 | `pyproject.toml`、`infrastructure/app_paths.py`、`container.py` | `tests/integration/test_cli_cards.py::test_version_command` | ✅ |
 | D-017 uv 管理 | `pyproject.toml`、`uv.lock`、README | 全部命令以 `python -m uv run` 执行 | ✅ |
@@ -29,7 +29,7 @@
 | D-019 四件套落点 | 项目根四份 `*.md` | `PROJECT_MAP.md` §9 | ✅ |
 | D-020 初版回溯范围 | 四件套内容 | `TASKS.md` T-001..T-023、`DECISIONS.md` D-001..D-020、`ERRORS.md` E-001..E-015 | ✅ |
 | D-021 视觉规范 | `docs/visual-spec.md`（待产出）、`card_item.py`、`board_view.py`、`layout_board` 常量、`web_renderer` 主题参数 | 待 T-024 定义 | ⏳ |
-| D-022 渲染稳定性最高优先级 | 分层规则由现有包结构保证；其余逐条见 T-026 | 待 T-016 / T-026 | ⏳ |
+| D-022 渲染稳定性最高优先级 | `web_renderer.shared_renderer`（单例）、`_render` 空白重试、`tests/integration/conftest.py`（空渲染器隔离） | `tests/integration/test_body_render.py`、`infrastructure/test_web_renderer.py`；16 次连续全量运行全绿 | ✅（4/10 条已给证据，见 T-026） |
 | D-023 200 卡片上限 | `load_document` / `build_card_tree` 需暴露总数与超限标记（未实现） | 待 T-025（200 正常 / 201 降级） | ⏳ |
 | D-024 任务列表单独成卡 | `domain/enums.CARD_KIND_BY_BLOCK[TASK_LIST]`（既有行为） | `infrastructure/test_markdown_it_adapter.py::test_task_list_counts_checked_items` | ✅（待 T-026 补回归锁定） |
 | D-025 目录卡片跳转 | `main_window`（未实现） | 待 T-021 | ⏳ |
@@ -58,7 +58,7 @@
 | `docs/visual-spec.md` 未产出、双主题未实现 | D-021 / T-024 | ⏳ |
 | 200 卡片上限与降级未实现（降级表现待确认） | D-023 / T-025 | ⏳ |
 | 渲染稳定性 10 条未逐条给出证据 | D-022 / T-026 | ⏳ |
-| app 路径渲染偶发 xfail（根因未定位） | E-013 / T-016 | open |
+| app 路径渲染偶发 xfail | E-013 / T-016 | ✅ 已修（连续 16 次全绿；根因 E-016/E-017） |
 | 目录卡片点击跳转未实现 | D-025 / T-021 | ⏳ |
 | 渲染缓存无容量上限 | T-017 | ⏳ |
 | 大文档未压测 | T-018 | ⏳ |
