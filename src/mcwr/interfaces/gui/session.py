@@ -31,6 +31,7 @@ from mcwr.application.features.layout_board.service import (
 from mcwr.application.features.load_document.models import LoadedDocument
 from mcwr.application.features.persist_layout.ports import LayoutStore
 from mcwr.application.features.persist_layout.service import persist_snapshot, restore_snapshot
+from mcwr.application.features.refresh_document.service import plan_refresh
 from mcwr.domain.errors import McwrError
 from mcwr.domain.models import (
     SNAPSHOT_SCHEMA_VERSION,
@@ -177,16 +178,17 @@ class BoardSession(QObject):
         layout.move_to(x, y)
 
     def refresh(self) -> bool:
-        """Re-read and re-parse the file on demand (FR-5.1/5.2).
+        """Re-read and re-parse the file on demand, structure first (FR-5, D11).
 
-        Keeps the geometry of every card whose ``stable_key`` survived, gives freshly
-        laid-out positions to new cards and re-stacks their parents. Structure-first
-        rebuild for major changes is added by the refresh_document slice.
+        Cards matched by their stable key keep their geometry, collapse and free-card
+        state; a major structural change (big section count or heading level sequence)
+        rebuilds the board instead, with a warning naming the reason.
         """
         if self._document is None:
             return False
         path = self._document.document.path
-        previous = self._layouts
+        previous_document = self._document
+        previous_layouts = dict(self._layouts)
         try:
             loaded = container.load(path)
         except McwrError as exc:
@@ -196,13 +198,21 @@ class BoardSession(QObject):
             self.failed.emit(f"refresh failed ({type(exc).__name__}: {exc})")
             return False
 
+        plan = plan_refresh(previous_document.tree, loaded.tree, previous_layouts)
         self._document = loaded
-        new_count = self._apply_layouts(previous)
+        for warning in plan.warnings:
+            self.status.emit(f"warning: {warning}")
+        new_count = self._apply_layouts({} if plan.major else plan.layouts)
         self.document_loaded.emit()
         self.cards_changed.emit(tuple(self._layouts))
-        self.status.emit(
-            f"refreshed {path.name}: {len(loaded.tree.cards)} cards ({new_count} new)"
-        )
+        if plan.major:
+            self.status.emit(
+                f"refreshed {path.name}: structure changed, the board was rebuilt from the document"
+            )
+        else:
+            self.status.emit(
+                f"refreshed {path.name}: {len(loaded.tree.cards)} cards ({new_count} new)"
+            )
         return True
 
     # --------------------------------------------------------------- persistence
@@ -277,6 +287,8 @@ class BoardSession(QObject):
             target = fresh.get(card_id)
             if target is None:
                 continue
+            if layout.width <= 0.0 and layout.height <= 0.0:
+                continue  # a placeholder (e.g. a brand-new card) keeps its fresh position
             target.x, target.y = layout.x, layout.y
             target.width, target.height = layout.width, layout.height
             target.collapsed = layout.collapsed

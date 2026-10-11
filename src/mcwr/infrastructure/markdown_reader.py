@@ -45,7 +45,12 @@ class FileMarkdownReader:
 
 
 def _decode(raw: bytes, candidates: tuple[str, ...], path: Path) -> tuple[str, str, str]:
-    """Decode bytes, labelling BOM-prefixed UTF-8 distinctly from plain UTF-8."""
+    """Decode bytes, labelling BOM-prefixed UTF-8 distinctly from plain UTF-8.
+
+    Last resort: decode with replacement characters rather than refusing to open the
+    file (FR-1.6 / NFR-4 — a bad encoding degrades to a readable plain-text card with a
+    warning, it never blocks the window).
+    """
     if raw.startswith(_UTF8_BOM):
         try:
             return raw.decode("utf-8-sig"), "utf-8-sig", ""
@@ -60,7 +65,11 @@ def _decode(raw: bytes, candidates: tuple[str, ...], path: Path) -> tuple[str, s
             continue
         warning = "" if encoding == "utf-8" else f"decoded as {encoding} (not UTF-8)"
         return text, encoding, warning
-    raise DocumentDecodeError(str(path), candidates)
+    if not candidates:
+        raise DocumentDecodeError(str(path), candidates)
+    fallback = candidates[0]
+    warning = f"decoded as {fallback} with replacement characters; the file is not valid text"
+    return raw.decode(fallback, errors="replace"), fallback, warning
 
 
 def _detect_newline(text: str) -> str:

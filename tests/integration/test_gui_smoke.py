@@ -124,22 +124,45 @@ def test_zoom_is_clamped_and_reported(window: MainWindow) -> None:
 
 
 def test_refresh_keeps_positions_and_adds_new_cards(window: MainWindow, tmp_path: Path) -> None:
+    """A card added without touching heading levels keeps every existing position."""
     document_copy = tmp_path / "doc.md"
     shutil.copyfile(SAMPLE, document_copy)
     assert window.open_path(document_copy) is True
     code = card_id_of(window, "python")
     window.session.layouts[code].move_to(4242.0, 2424.0)
+    cards_before = len(window.session.document.tree.cards)  # type: ignore[union-attr]
 
     with document_copy.open("a", encoding="utf-8") as handle:
-        handle.write("\n## Appended\n\nnew text\n")
+        handle.write("\n- [ ] an added task\n")
     before_mtime = document_copy.stat().st_mtime_ns
 
     assert window.session.refresh() is True
 
+    document = window.session.document
+    assert document is not None
     assert window.session.layouts[code].x == 4242.0, "existing layout must survive a refresh"
-    titles = {card.title for card in window.session.document.tree.cards.values()}  # type: ignore[union-attr]
-    assert "Appended" in titles
+    assert len(document.tree.cards) == cards_before + 1, "the task list became a new card"
     assert document_copy.stat().st_mtime_ns == before_mtime, "refresh must not write to the file"
+
+
+def test_a_major_structural_change_rebuilds_the_board(window: MainWindow, tmp_path: Path) -> None:
+    """D11: a new divider changes the big-section count, so the layout is rebuilt."""
+    document_copy = tmp_path / "doc.md"
+    shutil.copyfile(SAMPLE, document_copy)
+    assert window.open_path(document_copy) is True
+    code = card_id_of(window, "python")
+    window.session.layouts[code].move_to(5000.0, 5000.0)
+
+    with document_copy.open("a", encoding="utf-8") as handle:
+        handle.write("\n---\n\n## Whole new section\n\nbody\n")
+
+    assert window.session.refresh() is True
+
+    document = window.session.document
+    assert document is not None
+    assert len(document.tree.root_ids) == 3
+    assert window.session.layouts[code].x != 5000.0, "a major change rebuilds the arrangement"
+    assert "rebuilt" in window.statusBar().currentMessage()
 
 
 def test_layout_survives_a_restart(tmp_path: Path) -> None:

@@ -56,12 +56,21 @@ def test_directory_raises_domain_error(tmp_path: Path) -> None:
         FileMarkdownReader().read(tmp_path)
 
 
-def test_undecodable_bytes_raise_domain_error(tmp_path: Path) -> None:
+def test_undecodable_bytes_degrade_with_replacement_characters(tmp_path: Path) -> None:
+    """FR-1.6 / NFR-4: bad bytes never block the open, they warn and show best effort."""
     path = tmp_path / "weird.md"
     path.write_bytes(b"\xff\xfe\x00\x01\x80\x81")
-    reader = FileMarkdownReader(candidates=("utf-8", "ascii"))
+    source = FileMarkdownReader(candidates=("utf-8", "ascii")).read(path)
+    assert source.encoding == "utf-8"
+    assert "\ufffd" in source.text
+    assert any("replacement characters" in warning for warning in source.warnings)
+
+
+def test_empty_candidate_list_is_a_programming_error(tmp_path: Path) -> None:
+    path = tmp_path / "doc.md"
+    path.write_bytes(b"\xff\xfe")
     with pytest.raises(DocumentDecodeError):
-        reader.read(path)
+        FileMarkdownReader(candidates=()).read(path)
 
 
 def test_reading_never_touches_the_source_directory(tmp_path: Path) -> None:

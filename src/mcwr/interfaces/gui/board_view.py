@@ -76,14 +76,16 @@ class BoardView(QGraphicsView):
         self.zoom_changed.emit(self.zoom_percent())
 
     def fit_cards(self, margin: float = 40.0) -> None:
-        """Frame the whole board (acceptance 9's "fit view")."""
+        """Frame the whole board (acceptance 9's "fit view"), staying inside the bounds."""
         bounds = self.scene().itemsBoundingRect().adjusted(-margin, -margin, margin, margin)
         if bounds.isEmpty():
             return
         self.fitInView(bounds, Qt.AspectRatioMode.KeepAspectRatio)
-        if self.transform().m11() > Viewport.MAX_SCALE:
-            self.set_zoom(Viewport.MAX_SCALE * 100.0)
-        self.zoom_changed.emit(self.zoom_percent())
+        fitted = self.transform().m11()
+        if fitted > Viewport.MAX_SCALE or fitted < Viewport.MIN_SCALE:
+            self.set_zoom(min(max(fitted, Viewport.MIN_SCALE), Viewport.MAX_SCALE) * 100.0)
+        else:
+            self.zoom_changed.emit(self.zoom_percent())
 
     # -------------------------------------------------------------------- events
 

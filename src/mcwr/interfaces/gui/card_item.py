@@ -149,6 +149,27 @@ class CardItem(QGraphicsObject):
 
     # ----------------------------------------------------------------- item hooks
 
+    def itemChange(self, change: QGraphicsObject.GraphicsItemChange, value: object) -> object:
+        """Keep an attached child inside its parent (FR-3.4, acceptance 4).
+
+        Qt happily moves a child item outside its parent's rectangle; the spec forbids
+        that until the card is explicitly detached, so the position is clamped here.
+        Free cards (``detached``) and top-level cards move without constraint.
+        """
+        inside = change == QGraphicsObject.GraphicsItemChange.ItemPositionChange
+        parent = self.parentItem()
+        point = value
+        if (
+            inside
+            and not self.layout_state.detached
+            and isinstance(parent, CardItem)
+            and isinstance(point, QPointF)
+        ):
+            max_x = max(parent.card_width - self._width, 0.0)
+            max_y = max(parent.card_height - self._height, 0.0)
+            return QPointF(min(max(point.x(), 0.0), max_x), min(max(point.y(), 0.0), max_y))
+        return super().itemChange(change, value)
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseReleaseEvent(event)
         position = self.scenePos()
