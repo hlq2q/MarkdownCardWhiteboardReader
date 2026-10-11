@@ -1,47 +1,66 @@
-# 决策追溯表
+# 决策追溯表（映射）
 
-每个已确认决策（docs/requirements-spec.md §0.1）落在哪段代码、由哪个测试守住。
-状态：✅ 完成并验证 ｜ ⏳ 进行中 ｜ ⬜ 未开始。
+- 最后更新：2026-10-12 03:20:00 +08:00
+- **本表只记「决策 → 代码位置 → 测试名」**。决策的背景、选项、**理由与影响**一律以 `DECISIONS.md` 为唯一来源，此处不重复（收敛约定见 `PROJECT_MAP.md` §9）。
+- 状态：✅ 已实现并验证 ｜ ⏳ 计划中 ｜ ⬜ 未开始 ｜ ❓ 待确认
 
-| 决策 | 取值 | 实现位置 | 验证 | 状态 |
-|---|---|---|---|---|
-| D1 产品边界 | 只读、仅 Windows、无热更新/同步/回写 | `infrastructure/markdown_reader.py`、`interfaces/cli`、`interfaces/gui` | `test_markdown_reader.py::test_reading_never_touches_the_source_directory`、`tests/integration/test_cli_cards.py::test_loading_never_touches_the_source_directory`、`test_gui_smoke.py::test_refresh_keeps_positions_and_adds_new_cards`（断言 mtime 不变） | ✅ |
-| D2 GUI 栈 | PySide6 + QGraphicsScene | `interfaces/gui/board_view.py`、`card_item.py` | `test_gui_smoke.py`（12 项，offscreen）+ `spikes/spike_real_window.py`（真实平台） | ✅ |
-| D3 渲染策略 | Qt 原生壳 | `interfaces/gui/card_item.py`（QTextDocument 渲染卡片自有内容） | `test_gui_smoke.py::test_opening_a_file_builds_one_item_per_card` | ✅ |
-| D4 卡片身份 | `stable_key` 与 `content_hash` 分离 | `domain/ids.py`、`build_card_tree/service.py` | `test_ids.py`、`build_card_tree/test_service.py::test_content_edits_keep_the_card_identity_but_change_the_hash` | ✅ |
-| D5 卡片内容粒度 | 仅直属块 | `build_card_tree/service.py`（`own_block_indexes`） | `test_service.py::test_content_blocks_belong_to_the_nearest_heading`、`domain/invariants.py` 覆盖率不变量 | ✅ |
-| D6 折叠语义 | 隐藏子孙 + 父卡收缩 + 记忆几何 | `detach_restore/service.py::toggle_collapse`、`layout_board/service.py::relayout_subtree` | `detach_restore/test_service.py::test_fold_flips_and_remembers_child_geometry`、`layout_board/test_service.py::test_collapsed_parent_shrinks_and_remembers_child_geometry` | ✅ |
-| D7 缩放语义 | 整体画布变换 | `interfaces/gui/board_view.py`（`QTransform`，`AnchorUnderMouse`） | `test_acceptance.py::test_acceptance_9_...` | ✅ |
-| D8 拖动联动 | 子卡跟随父卡；自由卡不跟 | `interfaces/gui/card_item.py`（Qt 父子项）+ `_reparent_items` | `test_gui_smoke.py::test_attached_cards_are_parented_to_their_card`、`test_acceptance.py::test_acceptance_4_...` | ✅ |
-| D9 持久化格式 | 每文档 JSON、原子写、schema 版本 | `infrastructure/json_layout_store.py`（+`_layout_codec.py`/`_atomic.py`） | `test_json_layout_store.py`、`test_layout_roundtrip.py`（35 项） | ✅ |
-| D10 多窗口 | 多进程，每窗口一进程 | `interfaces/gui/app.py::spawn_new_window`、`MainWindow`（`Ctrl+N`） | `test_acceptance.py::test_acceptance_7_two_windows_are_independent` | ✅ |
-| D11 刷新判据 | 大卡片数或标题层级序列变化 = 重大 | `application/features/refresh_document/service.py` | 该切片 42 项单测 + `test_acceptance.py::test_acceptance_6_...` / `..._6b_...`（端到端交叉验证） | ✅ |
-| D12 增强功能归属 | 折叠进 MVP，其余后续 | 折叠已实现；搜索/大纲/连线未做 | — | ✅（MVP 部分） |
-| D13 交付落点 | 本仓库 | `docs/`、`src/mcwr/` | — | ✅ |
-| D14 离屏渲染 | Web 仅做离屏渲染 → 图片 + 缩放档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/` | 渲染器 46 项测试通过；App 路径实测出图（数学 `E = mc²`、Mermaid 流程图，md5 不同，人工核验） | ⏳ |
-| D15 会话分片 | 每会话一份分片 + `last_session` 指针 | `infrastructure/json_layout_store.py::_adopt` | `test_json_layout_store.py`（新会话不再动旧分片）、`test_gui_smoke.py::test_a_new_session_does_not_share_the_previous_layout`、`test_acceptance.py::test_acceptance_8_...` | ✅ |
+## 1. 决策 → 代码 → 测试
 
-## 验收标准 → 测试
+| 决策 | 代码位置 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| D-001 只读边界 | `infrastructure/markdown_reader.py`、`interfaces/` | `infrastructure/test_markdown_reader.py::test_reading_never_touches_the_source_directory`、`tests/integration/test_cli_cards.py::test_loading_never_touches_the_source_directory`、`tests/integration/test_gui_smoke.py::test_refresh_keeps_positions_and_adds_new_cards`（断言 mtime 不变） | ✅ |
+| D-002 GUI 栈 | `interfaces/gui/board_view.py`、`card_item.py` | `tests/integration/test_gui_smoke.py`（13 项）+ `spikes/spike_real_window.py` | ✅ |
+| D-003 原生卡片壳（Web 部件部分被 D-014 取代） | `interfaces/gui/card_item.py` | `test_gui_smoke.py::test_opening_a_file_builds_one_item_per_card` | ✅ |
+| D-004 身份键分离 | `domain/ids.py`、`application/features/build_card_tree/service.py` | `domain/test_ids.py`、`build_card_tree/test_service.py::test_content_edits_keep_the_card_identity_but_change_the_hash` | ✅ |
+| D-005 自有内容仅直属块 | `build_card_tree/service.py`（`own_block_indexes`） | `build_card_tree/test_service.py::test_content_blocks_belong_to_the_nearest_heading`、`domain/invariants.py` 覆盖不变量 | ✅ |
+| D-006 折叠语义 | `detach_restore/service.py::toggle_collapse`、`layout_board/service.py::relayout_subtree` | `detach_restore/test_service.py::test_fold_flips_and_remembers_child_geometry`、`layout_board/test_service.py::test_collapsed_parent_shrinks_and_remembers_child_geometry` | ✅ |
+| D-007 整体画布缩放 | `interfaces/gui/board_view.py`（`QTransform` + `AnchorUnderMouse`） | `tests/integration/test_acceptance.py::test_acceptance_9_zoom_works_from_wheel_and_from_a_typed_value` | ✅ |
+| D-008 子卡跟随父卡 | `main_window._reparent_items`、`card_item.itemChange` | `test_acceptance.py::test_acceptance_4_a_child_cannot_be_dragged_out_before_detaching`、`test_gui_smoke.py::test_attached_cards_are_parented_to_their_card` | ✅ |
+| D-009 每文档 JSON 快照 | `infrastructure/json_layout_store.py`（+`_layout_codec.py`/`_atomic.py`） | `infrastructure/test_json_layout_store.py`、`test_layout_roundtrip.py` | ✅ |
+| D-010 多进程多窗口 | `interfaces/gui/app.py::spawn_new_window`、`main_window`（Ctrl+N） | `test_acceptance.py::test_acceptance_7_two_windows_are_independent` | ✅ |
+| D-011 刷新判据 | `application/features/refresh_document/service.py` | `refresh_document/test_service.py`（42 项）、`test_acceptance.py::test_acceptance_6_refresh_keeps_layout_unless_the_structure_changes` / `..._6b_changing_a_heading_level_is_a_major_change` | ✅ |
+| D-012 增强功能归属 | 折叠已实现；搜索/大纲见 T-019/T-020 | — | ✅（MVP 部分） |
+| D-013 交付落点 | `docs/`、`src/mcwr/`、四件套在项目根 | — | ✅ |
+| D-014 离屏渲染 + 档位缓存 | `infrastructure/web_renderer.py`、`application/features/render_card/`、`main_window._queue_body_images` | `render_card/test_service.py`（34）+ `infrastructure/test_web_renderer.py`（12）+ `tests/integration/test_body_render.py`（2） | ✅（E-013 偶发未定位） |
+| D-015 会话分片 | `json_layout_store.py::_adopt` | `test_json_layout_store.py`、`test_gui_smoke.py::test_a_new_session_does_not_share_the_previous_layout`、`test_acceptance.py::test_acceptance_8_a_restart_restores_the_stored_layout` | ✅ |
+| D-016 命名 | `pyproject.toml`、`infrastructure/app_paths.py`、`container.py` | `tests/integration/test_cli_cards.py::test_version_command` | ✅ |
+| D-017 uv 管理 | `pyproject.toml`、`uv.lock`、README | 全部命令以 `python -m uv run` 执行 | ✅ |
+| D-018 分阶段提交 | git 历史（12 次提交） | `git log --oneline` | ✅ |
+| D-019 四件套落点 | 项目根四份 `*.md` | `PROJECT_MAP.md` §9 | ✅ |
+| D-020 初版回溯范围 | 四件套内容 | `TASKS.md` T-001..T-023、`DECISIONS.md` D-001..D-020、`ERRORS.md` E-001..E-015 | ✅ |
+| D-021 视觉规范 | `docs/visual-spec.md`（待产出）、`card_item.py`、`board_view.py`、`layout_board` 常量、`web_renderer` 主题参数 | 待 T-024 定义 | ⏳ |
+| D-022 渲染稳定性最高优先级 | 分层规则由现有包结构保证；其余逐条见 T-026 | 待 T-016 / T-026 | ⏳ |
+| D-023 200 卡片上限 | `load_document` / `build_card_tree` 需暴露总数与超限标记（未实现） | 待 T-025（200 正常 / 201 降级） | ⏳ |
+| D-024 任务列表单独成卡 | `domain/enums.CARD_KIND_BY_BLOCK[TASK_LIST]`（既有行为） | `infrastructure/test_markdown_it_adapter.py::test_task_list_counts_checked_items` | ✅（待 T-026 补回归锁定） |
+| D-025 目录卡片跳转 | `main_window`（未实现） | 待 T-021 | ⏳ |
+| D-026 显示名统一 | 窗口标题、README（现状 `Markdown Card Whiteboard Reader`） | — | ❓ 待确认字符串 |
+| D-027 代码签名 | 构建/签名脚本（未实现） | 待 T-022 | ⏳ |
+
+## 2. 验收标准 → 测试
 
 | 验收（spec §1.5） | 测试 |
-|---|---|
-| 1 线性排列 | `test_acceptance.py::test_acceptance_1_cards_are_laid_out_along_the_document_order` |
-| 2 分隔线/标题/归属 | `test_acceptance.py::test_acceptance_2_dividers_and_headings_nest_correctly` |
-| 3 非卡片块并入内容 | `test_acceptance.py::test_acceptance_3_prose_lists_and_quotes_are_not_cards` |
-| 4 子卡不能直接拖出 | `test_acceptance.py::test_acceptance_4_a_child_cannot_be_dragged_out_before_detaching` |
-| 5 拖出/还原/全部还原 | `test_acceptance.py::test_acceptance_5_restore_all_returns_the_initial_arrangement` |
-| 6 刷新结构优先 | `test_acceptance.py::test_acceptance_6_...`、`..._6b_...` |
-| 7 多窗口独立 | `test_acceptance.py::test_acceptance_7_two_windows_are_independent` |
-| 8 重开恢复布局 | `test_acceptance.py::test_acceptance_8_a_restart_restores_the_stored_layout` |
-| 9 滚轮/输入缩放 | `test_acceptance.py::test_acceptance_9_zoom_works_from_wheel_and_from_a_typed_value` |
-| 10 异常不崩溃 | `test_acceptance.py::test_acceptance_10_broken_input_never_crashes_the_window` |
+| --- | --- |
+| 1 线性排列 | `tests/integration/test_acceptance.py::test_acceptance_1_cards_are_laid_out_along_the_document_order` |
+| 2 分隔线/标题/归属 | `...::test_acceptance_2_dividers_and_headings_nest_correctly` |
+| 3 非卡片块并入内容 | `...::test_acceptance_3_prose_lists_and_quotes_are_not_cards` |
+| 4 子卡不能直接拖出 | `...::test_acceptance_4_a_child_cannot_be_dragged_out_before_detaching` |
+| 5 拖出/还原/全部还原 | `...::test_acceptance_5_restore_all_returns_the_initial_arrangement` |
+| 6 刷新结构优先 | `...::test_acceptance_6_refresh_keeps_layout_unless_the_structure_changes`、`...::test_acceptance_6b_changing_a_heading_level_is_a_major_change` |
+| 7 多窗口独立 | `...::test_acceptance_7_two_windows_are_independent` |
+| 8 重开恢复布局 | `...::test_acceptance_8_a_restart_restores_the_stored_layout` |
+| 9 滚轮/输入缩放 | `...::test_acceptance_9_zoom_works_from_wheel_and_from_a_typed_value` |
+| 10 异常不崩溃 | `...::test_acceptance_10_broken_input_never_crashes_the_window` |
 
-## 已知缺口（诚实清单）
+## 3. 当前缺口（映射视角）
 
-| 项 | 说明 |
-|---|---|
-| 公式 / Mermaid 实际渲染 | **已达标**（printToPdf + QPdfDocument.render）；历史缺陷记录：：渲染器独立可用（12 项单测 + 人工看图确认），但经 App 路径时 Python 侧轮询超时，卡片退回原文渲染。复现：`python -m uv run python spikes/spike_app_render_probe.py`（页面 `mcwrRenders` 递增、`mcwrState=done`，而渲染器 stats 仍为 `rendered=0, failed=N`）。另有一次 App 运行把同一张 Mermaid 图缓存到两个卡片键下（跨图串帧），已加回归守卫 `tests/integration/test_body_render.py`（当前 xfail） |
-| 目录卡片点击跳转（FR-2.4） | 未实现；spec §5.1 的 MVP 清单未列入该项，大纲导航在 §5.2 归入 V1.1 |
-| 打包 | **已完成并验证**：`packaging/mcwr.spec`（onedir，GUI 子系统）+ `--self-check` 自检入口。交付形态实测退出码 0（frozen=true，公式/Mermaid 各出图）。过程中修掉两个只有打包形态才暴露的缺陷：① `excludes` 误排 `PySide6.QtWebChannel` 导致 frozen 下渲染器 import 失败（卡片静默退回文本）；② 渲染器构造异常发生在 Qt 槽内被吞掉，现已捕获并在状态栏/自检报告中暴露 |
-| 多进程并发写同一分片 | 设计上由 D15 会话分片规避；未做真实双进程并发压测 |
-| 单文档超大（>2000 卡片） | 未压测，spec §7.2 第 16 条待你决定上限行为 |
+| 缺口 | 决策 / 任务 | 状态 |
+| --- | --- | --- |
+| `docs/visual-spec.md` 未产出、双主题未实现 | D-021 / T-024 | ⏳ |
+| 200 卡片上限与降级未实现（降级表现待确认） | D-023 / T-025 | ⏳ |
+| 渲染稳定性 10 条未逐条给出证据 | D-022 / T-026 | ⏳ |
+| app 路径渲染偶发 xfail（根因未定位） | E-013 / T-016 | open |
+| 目录卡片点击跳转未实现 | D-025 / T-021 | ⏳ |
+| 渲染缓存无容量上限 | T-017 | ⏳ |
+| 大文档未压测 | T-018 | ⏳ |
+| 安装包与签名未做（证书已具备，路径未提供） | D-027 / T-022 | ⏳ |
+| 显示名字符串未确认 | D-026 | ❓ |
