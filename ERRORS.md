@@ -1,6 +1,6 @@
 # ERRORS — 错误、根因与验证
 
-- 最后更新：2026-10-12 06:31:01 +08:00
+- 最后更新：2026-10-12 06:39:09 +08:00
 - 状态枚举：仅 open / fixed / wontfix
 - 说明：本轮（MVP 开发）实际发生的事故。可迁移的通用机制已在各条「防止复发」中指向 `pitfall-playbook` §13，此处只留细节。
 
@@ -236,3 +236,15 @@
 - 验证：`pytest src/mcwr/infrastructure/test_web_renderer.py -q` 退出码 0、17/17（含两条真实深色渲染）；全量 `pytest -q` 退出码 0、286 项；`ruff` 全绿、`mypy --strict` 76 文件 0 错误。
 - 关联任务：T-024
 - 防止复发：给一条执行路径**插入新步骤**时，先逐个列出「这条路上每一步被谁替换」，替身必须覆盖新步骤；把「旧测试还绿」当作替身仍然有效的证据，等于在验证一条已经不存在的路径（pitfall-playbook §11 #19「调试开关当真实能力」的同类：区分"跳过了判断"与"真的具备"）。
+
+## E-020 真实平台（windows 插件）下 GUI 与渲染整体失败：本机会话 USER 句柄耗尽，非代码回归
+
+- 日期：2026-10-12
+- 状态：open（环境问题：代码侧未发现缺陷，故不改代码；换新会话应自愈）
+- 现象：T-024 的真实平台主题验证中，窗口能建、主题三态能切、布局不变，但两个待渲染卡都失败：`kept its text form: web page could not be prepared: shell script never became ready (...\Cache\web\_shell.html)` 与 `kept its text form: render failed: timed out after 15000 ms`；`spikes/spike_real_window.py` 还报告 `visible=False`（窗口根本没显示出来）。
+- 报错/日志：stderr 反复打印 `QEventDispatcherWin32::registerTimer: Failed to create a timer (当前进程已使用完 Window 管理器对象的系统允许的所有其他句柄)`；两次真实平台运行分别约 **358 万次**与 **366 万次**。
+- 根因：**未被我改动的既有脚本 `spikes/spike_real_window.py` 出现完全相同的报错与失败**，因此与 T-024 的改动无关。机制是本机当前 Windows 会话的 USER 对象/句柄耗尽：`windows` 平台插件建不出真实 HWND、Qt 建不出计时器，`_pump_until` 的本地事件循环拿不到 `QTimer` 超时，于是页面等待与渲染必然超时。`offscreen` 平台插件不需要真实窗口，因此不受影响。
+- 修复：无代码修复。本轮把该次运行判为**不可用证据**（不作为"渲染坏了"的结论），渲染部分的判据改用 offscreen 的真实位图像素断言。
+- 验证：同一时刻 `pytest src/mcwr/infrastructure/test_web_renderer.py -q` **退出码 0、17/17、0 次 registerTimer 噪音**；对照的既有 spike 在真实平台仍复现同样失败（说明是环境而非代码）。
+- 关联任务：T-024
+- 防止复发：①看到"渲染失败"先查 stderr 有没有 `registerTimer`/句柄噪音——有噪音即环境不可用，不能据此判代码；②真实平台验证尽量在句柄充足的新会话里做，并把同批日志里的环境噪音一并记录；③`offscreen` 通过而真实平台失败时，先跑一个**未改动**的对照脚本，再怀疑自己的改动（对应 pitfall-playbook §11 #26「不先复现就改根因」）。

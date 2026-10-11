@@ -1,6 +1,6 @@
 # TASKS — 任务与状态
 
-- 最后更新：2026-10-12 06:31:01 +08:00
+- 最后更新：2026-10-12 06:39:09 +08:00
 - 状态枚举：仅 todo / doing / blocked / done
 
 ## 1. 当前目标
@@ -49,7 +49,7 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-021 | 目录卡片点击跳转（FR-2.4） | todo | 中 | 无（D-025 已确认纳入下一版） | 点击目录项后对应标题卡居中；测试断言 `view.center` 落在该卡矩形内 | 2–3 h | — | D-025 | 与 T-020 复用定位逻辑；优先级由「低」上调为「中」（用户已确认纳入） |
 | T-022 | 安装包与代码签名 | todo | 低 | 证书文件路径与口令（§4 阻塞项 1） | 产出可安装包并在干净环境安装后启动成功（截图/退出码） | 4–8 h | — | D-026 D-027 | 证书已确认具备；显示名字符串未定（D-026 proposed） |
 | T-023 | 初始化四件套（本次 state-keeper 任务） | done | 高 | 无 | 项目根存在 `PROJECT_MAP.md` / `TASKS.md` / `DECISIONS.md` / `ERRORS.md`；事实均带证据；`docs/traceability.md` 与四件套无重复主记录 | 1 h | 1 h | D-019 D-020 | 本轮完成 |
-| T-024 | 视觉规范 + 双主题实现 | done | 高 | 无 | ①`docs/visual-spec.md` 覆盖 D-021 全部条目 **✅**；②对比度经计算 ≥ 4.5:1（AA）、深色无纯黑、浅色无纯白 **✅**（脚本 `spikes/_out/contrast.py` + 单测 `test_theme.py` 钉住发布值）；③主题三态（跟随系统/浅色/深色）可切换且切换后 `CardLayout` **全字段与对象身份都不变** **✅**（`tests/integration/test_theme_switch.py` 6 项）；④深色下代码/公式/Mermaid 可读、缓存键含 theme **✅**（真实深色位图像素断言 + 文本卡像素断言 + `test_the_cache_key_separates_the_two_themes`） | 6–10 h | 3.5 h | D-021 D-030 D-031 E-019 | 证据：`ruff` 全绿；`mypy --strict` 76 文件 0 错误；`pytest -q` 退出码 0（**286 项**，较改动前 +27）；`test_web_renderer.py` 17/17（含 2 条真实深色渲染）；深色位图 `spikes/_out/render_card_math_dark_z1.0.png`、`render_card_mermaid_dark_z1.0.png`（已人工过目：深底浅字）。**残留**：语法高亮未做、层级色条未做、浅色阴影为 1px 半透明近似（见 §4.1） |
+| T-024 | 视觉规范 + 双主题实现 | done | 高 | 无 | ①`docs/visual-spec.md` 覆盖 D-021 全部条目 **✅**；②对比度经计算 ≥ 4.5:1（AA）、深色无纯黑、浅色无纯白 **✅**（脚本 `spikes/_out/contrast.py` + 单测 `test_theme.py` 钉住发布值）；③主题三态（跟随系统/浅色/深色）可切换且切换后 `CardLayout` **全字段与对象身份都不变** **✅**（`tests/integration/test_theme_switch.py` 6 项）；④深色下代码/公式/Mermaid 可读、缓存键含 theme **✅**（真实深色位图像素断言 + 文本卡像素断言 + `test_the_cache_key_separates_the_two_themes`） | 6–10 h | 3.5 h | D-021 D-030 D-031 E-019 | 证据：`ruff` 全绿；`mypy --strict` 76 文件 0 错误；`pytest -q` 退出码 0（**286 项**，较改动前 +27）；`test_web_renderer.py` 17/17（含 2 条真实深色渲染）；深色位图 `spikes/_out/render_card_math_dark_z1.0.png`、`render_card_mermaid_dark_z1.0.png`（已人工过目：深底浅字）。**真实平台**：主题三态切换在 `windows` 插件下实测通过（`spikes/spike_theme_switch_real.py` 退出码 0、布局/对象/文档均未变），但该次渲染失败属环境问题（本机会话 USER 句柄耗尽，既有 spike 同样失败）→ 见 **E-020**，故渲染判据以 offscreen 真实像素为准。**残留**：语法高亮未做、层级色条未做、浅色阴影为 1px 半透明近似（见 §4.1） |
 | T-025 | 200 卡片上限与降级模式 | todo | 高 | 无（D-029 已定降级表现） | ①解析后暴露卡片总数与超限标记；②201 张卡片的合成文档打开后应用不卡死（可交互 ≤ 5 s）且状态栏给出超限提示；③`pytest` 新增用例覆盖 200（正常）与 201（降级：不再离屏渲染公式/Mermaid，按原文显示） | 3–4 h | — | D-023 D-029 | 依赖已解除 |
 | T-026 | 渲染稳定性 10 条逐条落地与验证 | done | 高 | T-016 | 对 D-022 的 10 条各给一条可读回证据 | 6–10 h | 3 h | D-022 E-016 E-017 | 10 条证据齐（详见备注） |
 | T-027 | 收敛 docs/traceability.md 与四件套边界 | done | 中 | 无 | traceability 只保留「决策 → 代码位置 → 测试名」映射与验收映射；理由/影响一律指向 `DECISIONS.md` | 0.5 h | 0.5 h | D-021 之后 | 本轮完成 |
