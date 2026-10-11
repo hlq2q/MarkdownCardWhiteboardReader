@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from mcwr.application.features.load_document.models import LoadedDocument
 from mcwr.application.features.load_document.service import load_document as _load_document
 from mcwr.application.features.parse_document.ports import BlockParser, MarkdownReader
+from mcwr.application.features.persist_layout.ports import LayoutStore
+from mcwr.infrastructure.app_paths import app_data_dir
+from mcwr.infrastructure.json_layout_store import JsonLayoutStore
 from mcwr.infrastructure.markdown_it_adapter import MarkdownItBlockParser
 from mcwr.infrastructure.markdown_reader import FileMarkdownReader
 
@@ -27,3 +31,18 @@ def load(path: Path) -> LoadedDocument:
 def load_with(path: Path, *, reader: MarkdownReader, parser: BlockParser) -> LoadedDocument:
     """Open ``path`` with injected adapters (tests, spikes, future GUI sessions)."""
     return _load_document(path, reader=reader, parser=parser)
+
+
+def build_layout_store(root: Path | None = None) -> LayoutStore:
+    """The production layout store, rooted in the application data directory."""
+    return JsonLayoutStore(root if root is not None else app_data_dir())
+
+
+def new_session_id() -> str:
+    """One session id per process: layouts are never shared between windows (D15)."""
+    return uuid.uuid4().hex
+
+
+def new_window_uuid() -> str:
+    """One window id per process, used for the window state file."""
+    return uuid.uuid4().hex

@@ -60,6 +60,18 @@ def cards(
             typer.echo(f"warning: {warning}", err=True)
 
 
+@app.command()
+def gui(
+    path: Annotated[
+        Path | None, typer.Argument(help="Markdown file to open (optional, read-only).")
+    ] = None,
+) -> None:
+    """Open the whiteboard window (one window per process)."""
+    from mcwr.interfaces.gui.app import run
+
+    raise typer.Exit(code=run(path))
+
+
 def main() -> None:
     """Console-script entry point (``mcwr``)."""
     app()

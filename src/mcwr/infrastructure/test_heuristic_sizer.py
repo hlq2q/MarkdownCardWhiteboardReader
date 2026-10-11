@@ -1,0 +1,65 @@
+"""Tests for the heuristic size estimator."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from mcwr.domain.enums import BlockKind, CardKind
+from mcwr.domain.models import Block, Card
+from mcwr.infrastructure.heuristic_sizer import HeuristicSizeEstimator
+
+
+def block(index: int, text: str) -> Block:
+    return Block(index=index, kind=BlockKind.PARAGRAPH, raw_text=text, text_normalized=text)
+
+
+def card(kind: CardKind, blocks: tuple[int, ...]) -> Card:
+    return Card(
+        card_id="c",
+        kind=kind,
+        parent_id=None,
+        child_ids=(),
+        own_block_indexes=blocks,
+        heading_path=(),
+        ordinal_in_parent=0,
+        occurrence=0,
+        content_hash="h",
+        title="t",
+    )
+
+
+def test_wrapping_counts_lines() -> None:
+    sizer = HeuristicSizeEstimator(char_width=10.0, line_height=20.0)
+    assert sizer.lines_for("abcde", width=100.0) == 1
+    assert sizer.lines_for("a" * 45, width=100.0) == 5
+
+
+def test_explicit_newlines_each_count() -> None:
+    sizer = HeuristicSizeEstimator()
+    assert sizer.lines_for("a\nb\nc", width=1000.0) == 3
+
+
+def test_longer_text_is_taller() -> None:
+    sizer = HeuristicSizeEstimator()
+    blocks: Mapping[int, Block] = {0: block(0, "short"), 1: block(1, "word " * 200)}
+    short = sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (0,)), blocks=blocks, width=400)
+    long = sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (1,)), blocks=blocks, width=400)
+    assert long > short
+
+
+def test_empty_card_still_has_one_line() -> None:
+    sizer = HeuristicSizeEstimator()
+    assert sizer.estimate_height(card(CardKind.FALLBACK_TEXT, ()), blocks={}, width=400) > 0
+
+
+def test_missing_block_indexes_are_ignored() -> None:
+    sizer = HeuristicSizeEstimator()
+    assert sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (99,)), blocks={}, width=400) > 0
+
+
+def test_rich_card_kinds_get_extra_room() -> None:
+    sizer = HeuristicSizeEstimator()
+    blocks: Mapping[int, Block] = {0: block(0, "same text")}
+    text = sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (0,)), blocks=blocks, width=400)
+    image = sizer.estimate_height(card(CardKind.IMAGE, (0,)), blocks=blocks, width=400)
+    assert image > text
