@@ -162,7 +162,7 @@ def test_a_major_structural_change_rebuilds_the_board(window: MainWindow, tmp_pa
     assert document is not None
     assert len(document.tree.root_ids) == 3
     assert window.session.layouts[code].x != 5000.0, "a major change rebuilds the arrangement"
-    assert "rebuilt" in window.statusBar().currentMessage()
+    assert "重建" in window.statusBar().currentMessage()
 
 
 def test_layout_survives_a_restart(tmp_path: Path) -> None:

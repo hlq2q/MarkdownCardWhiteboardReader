@@ -72,6 +72,7 @@ class CardItem(QGraphicsObject):
         self.layout_state = layout
         self._document = _build_document(card, blocks)
         self._image = image
+        self._pending = False
         self._width = max(layout.width, 120.0)
         self._height = max(layout.height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, True)
@@ -118,6 +119,22 @@ class CardItem(QGraphicsObject):
         """
         self._image = image
         self.update()
+
+    def set_pending(self, pending: bool) -> None:
+        """Mark the card as "image on the way" so the user sees progress, not a stall.
+
+        D-022 item 4 asks for an async render with a visible placeholder: the body keeps
+        its text form while the raster is being produced, and the header shows a small
+        badge until the attempt finishes (success or documented fallback).
+        """
+        if pending == self._pending:
+            return
+        self._pending = pending
+        self.update()
+
+    @property
+    def is_pending(self) -> bool:
+        return self._pending
 
     @property
     def has_image(self) -> bool:
@@ -167,6 +184,9 @@ class CardItem(QGraphicsObject):
         painter.setPen(QPen(border, 2.5 if selected else 1.0))
         painter.drawRoundedRect(frame, RADIUS, RADIUS)
 
+        if self._pending and not self.has_image:
+            _draw_pending_badge(painter, header)
+
     # ----------------------------------------------------------------- item hooks
 
     def itemChange(self, change: QGraphicsObject.GraphicsItemChange, value: object) -> object:
@@ -194,6 +214,20 @@ class CardItem(QGraphicsObject):
         super().mouseReleaseEvent(event)
         position = self.scenePos()
         self.moved.emit(self, position.x(), position.y())
+
+
+def _draw_pending_badge(painter: QPainter, header: QRectF) -> None:
+    """A small "rendering…" pill on the right of the header (D-022 item 4)."""
+    font = QFont("Segoe UI", 8)
+    painter.setFont(font)
+    text = "渲染中…"
+    width = painter.fontMetrics().horizontalAdvance(text) + 12.0
+    pill = QRectF(header.right() - width - 8.0, header.top() + 7.0, width, header.height() - 14.0)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#ffffff")))
+    painter.drawRoundedRect(pill, pill.height() / 2.0, pill.height() / 2.0)
+    painter.setPen(QPen(QColor("#4a5568")))
+    painter.drawText(pill, int(Qt.AlignmentFlag.AlignCenter), text)
 
 
 def _draw_body_image(painter: QPainter, body: QRectF, image: QPixmap) -> None:

@@ -51,8 +51,19 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-023 | 初始化四件套（本次 state-keeper 任务） | done | 高 | 无 | 项目根存在 `PROJECT_MAP.md` / `TASKS.md` / `DECISIONS.md` / `ERRORS.md`；事实均带证据；`docs/traceability.md` 与四件套无重复主记录 | 1 h | 1 h | D-019 D-020 | 本轮完成 |
 | T-024 | 视觉规范 + 双主题实现 | todo | 高 | 无 | ①`docs/visual-spec.md` 存在并覆盖 D-021 列出的全部条目（15 个语义色位、6 类字体、H1–H6 等字号层级、9 类卡片尺寸、间距/圆角/边框/阴影、深色规则）；②正文对比度经计算 ≥ 4.5:1（AA），深色无纯黑、浅色无纯白；③主题可跟随系统并手动切换，切换后卡片内容不重渲染失败、布局坐标不变（测试断言切换前后 `CardLayout` 全部字段相等）；④深色下代码高亮、公式、Mermaid 位图仍可读（各出 1 张图人工核验） | 6–10 h | — | D-021 | 唯一取值来源是 `docs/visual-spec.md` |
 | T-025 | 200 卡片上限与降级模式 | todo | 高 | 用户确认降级行为 | ①解析后暴露卡片总数与超限标记；②201 张卡片的合成文档打开后应用不卡死（可交互 ≤ 5 s）且状态栏给出超限提示；③`pytest` 新增用例覆盖 200（正常）与 201（降级）两个边界 | 3–4 h | — | D-023 | **降级表现待确认**（候选见待确认问题） |
-| T-026 | 渲染稳定性 10 条逐条落地与验证 | doing | 高 | T-016 | 对 D-022 的 10 条各给一条可读回证据 | 6–10 h | 已用 2 h | D-022 E-016 E-017 | 已有证据：②错误隔离（`test_a_failing_renderer_degrades_to_text_without_crashing`，注入失败渲染器不崩、卡片保持文本）；⑤缓存异常降级重试（`_render` 对空白栅格重试一次 + `stats["retried"]`）；⑧资源管理（`shared_renderer` 单例 + `views_created() <= 1` 断言 + 空渲染器隔离非渲染测试）；⑩性能底线（冷渲染 17.2 s 实测、`PERF_CEILING_S = 60`、套件 16.6 s）。待补：①分层断言、③成熟库清单、④占位符可见性、⑥连续刷新 20 次、⑦多窗口渲染隔离、⑨日志与提示文案 |
+| T-026 | 渲染稳定性 10 条逐条落地与验证 | done | 高 | T-016 | 对 D-022 的 10 条各给一条可读回证据 | 6–10 h | 3 h | D-022 E-016 E-017 | 10 条证据齐（详见备注） |
 | T-027 | 收敛 docs/traceability.md 与四件套边界 | done | 中 | 无 | traceability 只保留「决策 → 代码位置 → 测试名」映射与验收映射；理由/影响一律指向 `DECISIONS.md` | 0.5 h | 0.5 h | D-021 之后 | 本轮完成 |
+| — | **T-026 的 10 条证据**（下表为 T-026 行的展开，不单独编号） | | | | | | | |
+| ① | 分层：`domain`/`application` 不依赖 Qt 与具体库 | | | | `tests/integration/test_render_stability.py::test_item_1_application_and_domain_do_not_import_gui_or_libraries`（并断言扫描到 ≥20 个文件，防空跑通过） | | | | |
+| ② | 错误隔离：单卡渲染失败不影响整板 | | | | `tests/integration/test_body_render.py::test_a_failing_renderer_degrades_to_text_without_crashing` | | | | |
+| ③ | 成熟库清单（不造轮子） | | | | `docs/render-stability.md` + `::test_item_3_the_mature_library_inventory_is_recorded` | | | | |
+| ④ | 异步渲染 + 可见占位符 | | | | `card_item._draw_pending_badge` + `::test_item_4_a_card_shows_a_placeholder_while_its_image_is_pending` | | | | |
+| ⑤ | 缓存/异常自动降级重试 | | | | `web_renderer._render` 空白栅格重试一次 + `stats["retried"]`（E-017） | | | | |
+| ⑥ | 连续刷新 20 次不闪退/白屏/卡死 | | | | `::test_item_6_twenty_consecutive_refreshes_stay_stable` | | | | |
+| ⑦ | 多窗口渲染隔离 | | | | `::test_item_7_a_failing_window_does_not_affect_another_window` | | | | |
+| ⑧ | 资源管理（失败不无限重试、不泄漏视图） | | | | `shared_renderer` 单例 + `views_created() <= 1`（E-016）；`stats["failed"]` / `failures` 计数 | | | | |
+| ⑨ | 关键错误写日志 + 状态栏文案 ≤ 40 字 | | | | `shared/logging.py`（`%LOCALAPPDATA%\...\logs\mcwr.log`）+ `::test_item_9_failures_are_logged_and_the_status_text_stays_short` | | | | |
+| ⑩ | 性能底线（100 卡片级可接受） | | | | 冷渲染两卡 17.2 s、`PERF_CEILING_S = 60`、全量套件 17.28 s / 257 项 | | | | |
 
 ## 4. 阻塞项
 
@@ -64,6 +75,6 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 
 ## 5. 下一步行动
 
-1. 完成 **T-026 剩余 6 条**（①分层断言 ③成熟库清单 ④占位符可见性 ⑥连续刷新 20 次 ⑦多窗口渲染隔离 ⑨日志与提示文案），每条一行可读回证据写入本行备注。
-2. 随后进入 **T-024**：先产出 `docs/visual-spec.md`（15 个语义色位、6 类字体、H1–H6 字号层级、9 类卡片尺寸、深色规则、WCAG AA 对比度计算值），再实现主题切换。
-3. T-025 与 T-022 在 §4 阻塞项 1/3 解除前不动手（T-021 已解除依赖，可随时插入）。
+**唯一在办任务：无**（T-026 已完成，D-028 规定一次只做一个任务；等你指定下一个，或我按 §1 顺序取 T-024）。
+
+1. 待你确认后开始 **T-024**（视觉规范 + 双主题）：先产出 `docs/visual-spec.md`（15 个语义色位、6 类字体、H1–H6 字号层级、9 类卡片尺寸、深色规则、WCAG AA 对比度计算值），验收见该行。
