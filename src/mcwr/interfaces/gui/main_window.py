@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 )
 
 from mcwr import container
+from mcwr.application.features.build_toc.models import TocEntry
+from mcwr.application.features.build_toc.service import resolve_anchor
 from mcwr.application.features.detach_restore.service import can_detach
 from mcwr.application.features.persist_layout.ports import LayoutStore
 from mcwr.application.features.render_card.ports import WebCardRenderer
@@ -80,6 +82,7 @@ class MainWindow(QMainWindow):
         self.view = BoardView(self.scene, self)
         self.setCentralWidget(self.view)
         self._items: dict[CardId, CardItem] = {}
+        self._toc: tuple[TocEntry, ...] = ()
         self._zoom_box: QComboBox | None = None
         self._theme_box: QComboBox | None = None
         self._overlay = QWidget(self)
@@ -406,13 +409,15 @@ class MainWindow(QMainWindow):
                 MAX_CARDS,
             )
         blocks = self.session.blocks
+        self._toc = self.session.toc
         for card_id in document.tree.ordered_ids():
             card = document.tree.cards[card_id]
             layout = self.session.layouts.get(card_id)
             if layout is None:
                 continue
-            item = CardItem(card, blocks, layout, palette=self._palette)
+            item = CardItem(card, blocks, layout, palette=self._palette, toc=self._toc)
             item.moved.connect(self._on_item_moved)
+            item.link_clicked.connect(self._on_link_clicked)
             self._items[card_id] = item
         self._reparent_items()
         self._apply_geometry(tuple(self._items))
@@ -546,6 +551,28 @@ class MainWindow(QMainWindow):
         if isinstance(item, CardItem):
             self.session.move_card(item.card.card_id, x, y)
             self.statusBar().showMessage(f"moved {item.card.title!r} to ({x:.0f}, {y:.0f})")
+
+    def _on_link_clicked(self, source: object, anchor: str) -> None:
+        """Jump to the card a TOC line points at (FR-2.4, flow F10).
+
+        F10's order: unfold the folded ancestors so the card is really reachable, center it,
+        highlight it and say what happened. The canvas scale is deliberately left alone
+        ("视口平移，不改变 scale").
+        """
+        label = source.card.title if isinstance(source, CardItem) else anchor
+        target = resolve_anchor(self._toc, anchor)
+        if target is None:
+            self.statusBar().showMessage(shorten(f"{label}：目录项未找到对应标题卡"))
+            return
+        unfolded = self.session.reveal(target)
+        item = self._items.get(target)
+        if item is None:  # pragma: no cover - the entry came from the same card tree
+            return
+        self.scene.clearSelection()
+        item.setSelected(True)
+        self.view.centerOn(item.sceneBoundingRect().center())
+        note = f"（已展开 {unfolded} 层折叠祖先）" if unfolded else ""
+        self.statusBar().showMessage(shorten(f"已定位：{item.card.title}{note}"))
 
     def _on_zoom_changed(self, percent: float) -> None:
         if self._zoom_box is not None:

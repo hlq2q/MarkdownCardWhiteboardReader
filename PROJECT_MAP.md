@@ -2,7 +2,7 @@
 
 - 项目名称：Markdown Card Whiteboard Reader（包名 `mcwr`，分发名 `markdown-card-whiteboard`）
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 06:57:56 +08:00
+- 最后更新：2026-10-12 07:05:44 +08:00
 
 ## 1. 项目目标
 
@@ -44,7 +44,7 @@ MarkdownCardWhiteboardReader/
 │   ├── domain/            # enums errors ids invariants models（纯模型，零 IO）
 │   ├── application/
 │   │   ├── features/      # parse_document · build_card_tree · load_document · layout_board
-│   │   │                  # detach_restore · persist_layout · refresh_document · render_card
+│   │   │                  # detach_restore · persist_layout · refresh_document · render_card · build_toc
 │   │   └── （端口在各 feature 的 ports.py）
 │   ├── infrastructure/    # markdown_reader · markdown_it_adapter · heuristic_sizer
 │   │                      # json_layout_store(+_layout_codec/+_atomic) · app_paths · web_renderer
@@ -59,7 +59,7 @@ MarkdownCardWhiteboardReader/
 ├── tests/
 │   ├── conftest.py        # offscreen 平台 + QtWebEngine 预初始化 + 槽异常守卫
 │   └── integration/       # test_acceptance.py · test_gui_smoke.py · test_cli_cards.py · test_body_render.py
-│                          # test_render_stability.py · test_theme_switch.py · test_card_limit.py
+│                          # test_render_stability.py · test_theme_switch.py · test_card_limit.py · test_toc_navigation.py
 ├── build/ dist/           # PyInstaller 产物（gitignore）
 ```
 
@@ -89,6 +89,7 @@ MarkdownCardWhiteboardReader/
 | `src/mcwr/application/features/persist_layout/` | 目录 | 快照恢复/持久化用例 + `LayoutStore` 端口 | `restore_snapshot` `persist_snapshot` `LayoutStore` | domain | GUI session | 中：损坏快照必须降级不阻塞 | 9 | 高 |
 | `src/mcwr/application/features/refresh_document/` | 目录 | 刷新合并：结构签名（D11 判据）、键匹配 + 内容哈希回退、几何合并 | `plan_refresh` `is_major_change` `match_cards` `merge_layouts` | domain | GUI session | 中：判据语义易被误读 | 10 | 高 |
 | `src/mcwr/application/features/render_card/` | 目录 | 判定哪些卡片需要位图 + 提取待渲染源 + 透传 `theme`（纯逻辑，无 Qt） | `needs_web_render` `web_source` `card_image` `WebCardRenderer` | domain | GUI main_window | 低 | 11 | 高 |
+| `src/mcwr/application/features/build_toc/` | 目录 | 目录条目：标题树 → 可点击条目（锚点=slugify+去重后缀），并提供「锚点 → 卡片」的同一份映射（FR-2.4） | `TocEntry` `build_toc` `slugify` `resolve_anchor` `toc_markdown` | domain enums/models | card_item / session / main_window | 低 | 11.5 | 高 |
 | `src/mcwr/infrastructure/markdown_reader.py` | 文件 | 只读读字节、编码探测（utf-8-sig/utf-8/gbk/cp1252 → 替换字符降级）、换行统计 | `FileMarkdownReader` | parse_document.models | container | 中：降级路径需保持只读 | 12 | 高 |
 | `src/mcwr/infrastructure/markdown_it_adapter.py` | 文件 | token → IR 块（9 类成卡块 + 内容块 + toc 特判 + 图片段落升级） | `MarkdownItBlockParser` `build_parser` | markdown-it-py / mdit-py-plugins | container | 中：依赖第三方 token 形态（Spike 1 已固化） | 13 | 高 |
 | `src/mcwr/infrastructure/json_layout_store.py` | 文件 | 会话分片 JSON 快照存储：原子写 + schema 版本 + last_session 播种 | `JsonLayoutStore` | `_layout_codec` `_atomic` app_paths | container | 中：D15 分片语义 | 14 | 高 |

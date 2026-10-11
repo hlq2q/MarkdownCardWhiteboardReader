@@ -20,6 +20,7 @@
 | 公式 / Mermaid 离屏渲染（D14） | ✅ | 46 项渲染测试；App 内实测数学卡出 `E = mc²`、Mermaid 卡出流程图；打包后自检 `rendered_images=2/2` |
 | 视觉规范 + 双主题（跟随系统/浅色/深色） | ✅ | docs/visual-spec.md（取值唯一来源）+ `interfaces/gui/theme.py`；`tests/integration/test_theme_switch.py` 6 项（切换不动任何布局字段）、深色真实位图像素断言 |
 | 200 卡片上限与超限降级（D-023/D-029） | ✅ | 201 卡合成文档实测打开 0.03–0.05 s；`tests/integration/test_card_limit.py` 4 项：超限后零离屏渲染、公式按原文绘制、状态栏与日志各一次提示 |
+| 目录卡片点击跳转（FR-2.4） | ✅ | `[TOC]` 处生成可点击条目（全部 H1–H6）；`tests/integration/test_toc_navigation.py` 5 项：真点击 → 目标卡居中并高亮、折叠祖先逐级展开、链接点击不拖动卡片 |
 | 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行
@@ -34,6 +35,7 @@ python -m uv run mcwr version
 
 GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击卡片居中、拖动卡片（子卡片跟随父卡片，且不能拖出父卡片边界）、
 右键卡片 → 拖出为自由卡片 / 还原到父卡片 / 收回所有子卡片 / 折叠展开，右下角 **刷新** 与 **全部还原**；
+文档里写了 `[TOC]`（或 `[[TOC]]`）时，目录卡会列出全部标题，**点击条目跳到对应标题卡**（自动展开被折叠的祖先，不改变缩放）；
 工具栏最右侧是**主题三态**（跟随系统 / 浅色 / 深色），切换只重绘、不移动任何卡片，选择会记住。
 `Ctrl+N` 新建窗口（新进程，独立会话）、`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放。
 

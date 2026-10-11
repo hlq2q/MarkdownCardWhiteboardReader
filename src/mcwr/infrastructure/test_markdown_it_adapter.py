@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mcwr.domain.enums import BlockKind
-from mcwr.domain.models import Block
+from mcwr.domain.models import TOC_ENTRIES_ATTR, Block
 from mcwr.infrastructure.markdown_it_adapter import MarkdownItBlockParser
 
 SAMPLE = Path(__file__).resolve().parents[3] / "spikes" / "samples" / "sample.md"
@@ -98,6 +98,22 @@ def test_toc_marker_becomes_a_toc_block() -> None:
     _, by_index = parse_sample()
     toc = [block for block in by_index.values() if block.kind is BlockKind.TOC]
     assert toc[0].text_normalized == "[TOC]"
+
+
+def test_a_toc_block_records_how_many_entries_it_will_list() -> None:
+    """T-021: the card is sized by the generated entries, so the count travels in the IR."""
+    text = "# One\n\n[TOC]\n\n## Two\n\n### Three\n"
+    blocks = MarkdownItBlockParser().parse(text)
+    toc = [block for block in blocks if block.kind is BlockKind.TOC][0]
+    headings = [block for block in blocks if block.kind is BlockKind.HEADING]
+    assert toc.attrs[TOC_ENTRIES_ATTR] == "3"
+    assert toc.attrs[TOC_ENTRIES_ATTR] == str(len(headings))
+
+
+def test_a_document_without_headings_carries_no_stamp() -> None:
+    blocks = MarkdownItBlockParser().parse("[TOC]\n\njust prose\n")
+    toc = [block for block in blocks if block.kind is BlockKind.TOC][0]
+    assert TOC_ENTRIES_ATTR not in toc.attrs
 
 
 def test_image_paragraph_becomes_an_image_block_with_attributes() -> None:

@@ -14,9 +14,12 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
 from mcwr import container
+from mcwr.application.features.build_toc.models import TocEntry
+from mcwr.application.features.build_toc.service import build_toc
 from mcwr.application.features.detach_restore.models import LayoutChange
 from mcwr.application.features.detach_restore.service import (
     detach_card,
+    expand_ancestors,
     reclaim_children,
     restore_all,
     restore_card,
@@ -133,6 +136,15 @@ class BoardSession(QObject):
         """
         return self._document is not None and self._document.over_limit
 
+    @property
+    def toc(self) -> tuple[TocEntry, ...]:
+        """The TOC card's entries for the open document, recomputed from its card tree.
+
+        Computed, never stored: the entries are a pure function of the tree, so a refresh can
+        never leave a stale table of contents behind (FR-2.4).
+        """
+        return () if self._document is None else build_toc(self._document.tree)
+
     # ----------------------------------------------------------------- write side
 
     def open(self, path: Path) -> bool:
@@ -183,6 +195,19 @@ class BoardSession(QObject):
 
     def fold(self, card_id: CardId) -> LayoutChange:
         return self._apply(toggle_collapse(self._tree(), self._layouts, card_id), card_id)
+
+    def reveal(self, card_id: CardId) -> int:
+        """Unfold the ancestors hiding ``card_id``; returns how many were opened (FR-2.4).
+
+        The caller centers the viewport on the card afterwards; this method only makes it
+        reachable, so a TOC jump into a folded section shows the card instead of a blank area.
+        """
+        if self._document is None:
+            return 0
+        change = expand_ancestors(self._tree(), self._layouts, card_id)
+        if change.changed:
+            self.cards_changed.emit(tuple(self._layouts))
+        return len(change.affected)
 
     def restore_all(self) -> LayoutChange:
         """Rebuild the initial attached arrangement and reset the fold state (FR-4.5)."""

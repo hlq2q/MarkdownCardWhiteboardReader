@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
+    QTextCursor,
     QTextDocument,
 )
 from PySide6.QtWidgets import (
@@ -33,6 +34,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mcwr.application.features.build_toc.models import TocEntry
+from mcwr.application.features.build_toc.service import toc_markdown
 from mcwr.domain.enums import CardKind
 from mcwr.domain.models import Block, Card, CardLayout
 from mcwr.interfaces.gui.theme import (
@@ -76,6 +79,9 @@ class CardItem(QGraphicsObject):
     moved = Signal(object, float, float)
     """Emitted after a drag finishes: (item, whiteboard x, whiteboard y)."""
 
+    link_clicked = Signal(object, str)
+    """A link inside the card body was clicked: (item, anchor without the leading ``#``)."""
+
     def __init__(
         self,
         card: Card,
@@ -83,19 +89,25 @@ class CardItem(QGraphicsObject):
         layout: CardLayout,
         image: QPixmap | None = None,
         palette: Palette = LIGHT,
+        toc: tuple[TocEntry, ...] = (),
     ) -> None:
         super().__init__()
         self.card = card
         self.layout_state = layout
         self._blocks = blocks
         self._palette = palette
-        self._document = _build_document(card, blocks, palette)
+        self._toc = toc
+        self._document = _build_document(card, blocks, palette, toc)
         self._image = image
         self._pending = False
         self._hovered = False
         self._dragging = False
+        self._press_position: QPointF | None = None
         self._width = max(layout.width, 120.0)
         self._height = max(layout.height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
+        # Lay the text out as soon as the geometry is known (not only in ``paint``): a click
+        # can be hit-tested before the first paint, and ``anchor_at`` must answer then too.
+        self._document.setTextWidth(self.body_rect().width())
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemSendsGeometryChanges, True)
@@ -113,6 +125,7 @@ class CardItem(QGraphicsObject):
         self.prepareGeometryChange()
         self._width = max(width, 120.0)
         self._height = max(height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
+        self._document.setTextWidth(self.body_rect().width())
 
     @property
     def card_width(self) -> float:
@@ -147,8 +160,27 @@ class CardItem(QGraphicsObject):
         if palette.theme is self._palette.theme:
             return
         self._palette = palette
-        self._document = _build_document(self.card, self._blocks, palette)
+        self._document = _build_document(self.card, self._blocks, palette, self._toc)
         self.update()
+
+    def anchor_at(self, point: QPointF) -> str:
+        """The anchor of the link drawn under an item-local ``point`` (``""`` if none).
+
+        The body is painted with the document translated to ``body_rect().topLeft()``, so a
+        click is mapped back the same way before asking the layout which character it hit;
+        ``QTextCharFormat.isAnchor()`` then says whether that character is a link.
+        """
+        local = point - self.body_rect().topLeft()
+        position = self._document.documentLayout().hitTest(local, Qt.HitTestAccuracy.ExactHit)
+        if position < 0:
+            return ""
+        cursor = QTextCursor(self._document)
+        cursor.setPosition(position)
+        cursor.movePosition(
+            QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor
+        )
+        char_format = cursor.charFormat()
+        return char_format.anchorHref().lstrip("#") if char_format.isAnchor() else ""
 
     def set_image(self, image: QPixmap | None) -> None:
         """Show an offscreen-rendered body (math / mermaid), or fall back to the text.
@@ -279,6 +311,13 @@ class CardItem(QGraphicsObject):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            self._press_position = self.scenePos()
+            anchor = self.anchor_at(event.pos())
+            if anchor:
+                # A link click navigates; it must not start a drag (FR-2.4).
+                self.link_clicked.emit(self, anchor)
+                event.accept()
+                return
             self._dragging = True
             self.update()
         super().mousePressEvent(event)
@@ -288,8 +327,13 @@ class CardItem(QGraphicsObject):
         if self._dragging:
             self._dragging = False
             self.update()
-        position = self.scenePos()
-        self.moved.emit(self, position.x(), position.y())
+        # Only a real move is a move: a plain click (a link, a selection) used to emit
+        # ``moved`` as well, which recorded a no-op drag and overwrote the status message.
+        moved = self._press_position is None or self._press_position != self.scenePos()
+        self._press_position = None
+        if moved:
+            position = self.scenePos()
+            self.moved.emit(self, position.x(), position.y())
 
 
 def _font(family: str, px: float, *, bold: bool = False, tracking_px: float = 0.0) -> QFont:
@@ -338,18 +382,27 @@ def _draw_body_image(painter: QPainter, body: QRectF, image: QPixmap) -> None:
     painter.drawPixmap(int(body.left()), int(body.top()), scaled)
 
 
-def _build_document(card: Card, blocks: Mapping[int, Block], palette: Palette) -> QTextDocument:
-    """Render this card's own blocks (never its children's) as Markdown text."""
+def _build_document(
+    card: Card, blocks: Mapping[int, Block], palette: Palette, toc: tuple[TocEntry, ...] = ()
+) -> QTextDocument:
+    """Render this card's own blocks (never its children's) as Markdown text.
+
+    A TOC card is the one exception: its body is the generated list of heading links, which
+    is what makes the lines clickable (FR-2.4).
+    """
     parts: list[str] = []
-    for index in card.own_block_indexes:
-        block = blocks.get(index)
-        if block is None:
-            continue
-        if card.kind is CardKind.HEADING and block.index == card.block_index:
-            continue  # a heading's text already lives in the header bar
-        text = block.raw_text.strip()
-        if text:
-            parts.append(text)
+    if card.kind is CardKind.TOC:
+        parts.append(toc_markdown(toc))
+    else:
+        for index in card.own_block_indexes:
+            block = blocks.get(index)
+            if block is None:
+                continue
+            if card.kind is CardKind.HEADING and block.index == card.block_index:
+                continue  # a heading's text already lives in the header bar
+            text = block.raw_text.strip()
+            if text:
+                parts.append(text)
     document = QTextDocument()
     document.setDefaultFont(_font(UI_FONT, FONT_PX["body"]))
     # Code blocks and links must stay readable on the dark fill, where the markdown

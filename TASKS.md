@@ -1,6 +1,6 @@
 # TASKS — 任务与状态
 
-- 最后更新：2026-10-12 06:57:56 +08:00
+- 最后更新：2026-10-12 07:05:44 +08:00
 - 状态枚举：仅 todo / doing / blocked / done
 
 ## 1. 当前目标
@@ -46,7 +46,7 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-018 | 大文档性能压测 | todo | 中 | 无 | 生成 500 与 1000 卡片的合成文档，记录「打开到可交互」与「拖动帧率」两组实测数字进 `docs/`；若 >2 s 或 <30 fps 则开新任务 | 3–5 h | — | — | spec NFR-2 目前只有 100 卡片假设 |
 | T-019 | 搜索并定位卡片（V1.1） | todo | 中 | 无 | 输入关键字 → 命中卡片居中并高亮；新增集成测试断言命中卡片 id 与视口中心坐标 | 4–6 h | — | D-012 | spec §5.2 V1.1 候选 |
 | T-020 | 大纲导航（V1.1，标题树跳转） | todo | 中 | 无 | 侧栏列出标题树，点击后目标标题卡居中；测试断言点击第 3 项后视口中心等于该卡中心 | 3–4 h | — | D-012 | 与 T-021 可能复用定位逻辑 |
-| T-021 | 目录卡片点击跳转（FR-2.4） | todo | 中 | 无（D-025 已确认纳入下一版） | 点击目录项后对应标题卡居中；测试断言 `view.center` 落在该卡矩形内 | 2–3 h | — | D-025 | 与 T-020 复用定位逻辑；优先级由「低」上调为「中」（用户已确认纳入） |
+| T-021 | 目录卡片点击跳转（FR-2.4） | done | 中 | 无（D-025 已确认纳入下一版） | 点击目录项后对应标题卡居中 **✅**（`QTest` 真点击 → `view.mapToScene(viewport.center)` 落在目标卡矩形内，且卡片未被拖动）；目标在折叠祖先内时逐级展开并提示 **✅**（F10） | 2–3 h | 2 h | D-025 D-033 | 实现：目录条目由 `build_toc` 按标题树生成（`[TOC]` 处才生成条目，含全部 H1–H6）；卡片内链接经 `QTextCharFormat.isAnchor()` 解析；顺带修两处既有缺陷：目录卡高度按条目数（parser 在块 `attrs` 戳 `toc_entries`）、普通点击不再误发 `moved`。证据：`tests/integration/test_toc_navigation.py` 5 项 + `build_toc/test_service.py` 7 项 + `detach_restore` 3 项 + sizer/adapter 各 2 项；全量 `pytest -q` 退出码 0（314 项） |
 | T-022 | 安装包与代码签名 | todo | 低 | 证书文件路径与口令（§4 阻塞项 1） | 产出可安装包并在干净环境安装后启动成功（截图/退出码） | 4–8 h | — | D-026 D-027 | 证书已确认具备；显示名字符串未定（D-026 proposed） |
 | T-023 | 初始化四件套（本次 state-keeper 任务） | done | 高 | 无 | 项目根存在 `PROJECT_MAP.md` / `TASKS.md` / `DECISIONS.md` / `ERRORS.md`；事实均带证据；`docs/traceability.md` 与四件套无重复主记录 | 1 h | 1 h | D-019 D-020 | 本轮完成 |
 | T-024 | 视觉规范 + 双主题实现 | done | 高 | 无 | ①`docs/visual-spec.md` 覆盖 D-021 全部条目 **✅**；②对比度经计算 ≥ 4.5:1（AA）、深色无纯黑、浅色无纯白 **✅**（脚本 `spikes/_out/contrast.py` + 单测 `test_theme.py` 钉住发布值）；③主题三态（跟随系统/浅色/深色）可切换且切换后 `CardLayout` **全字段与对象身份都不变** **✅**（`tests/integration/test_theme_switch.py` 6 项）；④深色下代码/公式/Mermaid 可读、缓存键含 theme **✅**（真实深色位图像素断言 + 文本卡像素断言 + `test_the_cache_key_separates_the_two_themes`） | 6–10 h | 4 h | D-021 D-030 D-031 E-019 E-021 | 证据：`ruff` 全绿；`mypy --strict` 76 文件 0 错误；`pytest -q` 退出码 0（**286 项**，较改动前 +27）；`test_web_renderer.py` 17/17（含 2 条真实深色渲染）；深色位图 `spikes/_out/render_card_math_dark_z1.0.png`、`render_card_mermaid_dark_z1.0.png`（已人工过目：深底浅字）。**真实平台**：主题三态切换在 `windows` 插件下实测通过（`spikes/spike_theme_switch_real.py` 退出码 0、布局/对象/文档均未变），但该次渲染失败属环境问题（本机会话 USER 句柄耗尽，既有 spike 同样失败）→ 见 **E-020**，故渲染判据以 offscreen 真实像素为准。**残留**：语法高亮未做、层级色条未做、浅色阴影为 1px 半透明近似（见 §4.1）。**E-021 修复**：真实平台探测发现"升级后页面缺 `mcwrSetTheme`"（渲染页固定文件名被 Chromium 磁盘缓存供了旧版），改为内容寻址 `_shell-<digest>.html` 后，在共享缓存目录 + 旧 `_shell.html` 在场 + 新 payload 的条件下实测 `rendered=1 cache_hits=0 failed=0`、无 TypeError |
@@ -87,6 +87,6 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 
 ## 5. 下一步行动
 
-**唯一在办任务：无**（T-025 已完成）。按 §1 顺序下一个是 **T-021**（目录卡片点击跳转，2–3 h；D-025 已确认纳入下一版）；同批待办还有 **T-028**（层级色条，1–2 h）与 **T-029**（Pygments 语法高亮，2–4 h）。
+**唯一在办任务：无**（T-021 已完成）。按 §1 顺序下一个是 **T-020**（大纲导航，3–4 h；可直接复用 T-021 的 `session.reveal` + `centerOn` 定位链路）；同批待办还有 **T-028**（层级色条，1–2 h）与 **T-029**（Pygments 语法高亮，2–4 h）。
 
 等你指定一个；一次只做一个（D-028）：完成 → 验收证据 → 状态改 `done` → 四件套更新 → 一次提交，然后才开下一个。

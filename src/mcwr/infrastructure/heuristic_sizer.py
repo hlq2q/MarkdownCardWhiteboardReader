@@ -6,7 +6,7 @@ import math
 from collections.abc import Mapping
 
 from mcwr.domain.enums import CardKind
-from mcwr.domain.models import Block, Card
+from mcwr.domain.models import TOC_ENTRIES_ATTR, Block, Card
 
 _CHAR_WIDTH = 7.6
 _LINE_HEIGHT = 20.0
@@ -50,6 +50,18 @@ class HeuristicSizeEstimator:
             block = blocks.get(index)
             if block is None:
                 continue
+            if card.kind is CardKind.TOC:
+                # The card draws the generated entry list, not the one-line ``[TOC]`` marker.
+                lines += _toc_lines(block)
+                continue
             lines += self.lines_for(block.raw_text or block.text_normalized, width)
         lines = max(lines, 1)
         return lines * self._line_height + _EXTRA_HEIGHT.get(card.kind, 0.0)
+
+
+def _toc_lines(block: Block) -> int:
+    """How many lines a TOC card needs: one per heading (see ``TOC_ENTRIES_ATTR``)."""
+    try:
+        return max(int(block.attrs.get(TOC_ENTRIES_ATTR, "1")), 1)
+    except ValueError:  # a hand-built block may carry anything; fall back to the marker
+        return 1

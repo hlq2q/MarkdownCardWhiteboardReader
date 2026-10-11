@@ -113,3 +113,24 @@ def toggle_collapse(
     change.add(card_id)
     change.relayout = True
     return change.result()
+
+
+def expand_ancestors(
+    tree: CardTree, layouts: MutableMapping[CardId, CardLayout], card_id: CardId
+) -> LayoutChange:
+    """Unfold every folded ancestor so ``card_id`` becomes visible (FR-2.4 / F10).
+
+    Used by "定位" (a TOC line, and later the outline): a card inside a folded ancestor is
+    hidden, so the ancestors are opened from the immediate parent upwards and the caller
+    re-stacks each of them. A card that is already reachable yields an empty change.
+    """
+    if card_id not in tree.cards:
+        raise KeyError(f"unknown card {card_id}")
+    change = ChangeAccumulator()
+    for ancestor in tree.ancestors(card_id):
+        layout = _require(tree, layouts, ancestor)
+        if layout.collapsed:
+            layout.collapsed = False
+            change.add(ancestor)
+    change.relayout = bool(change.affected)
+    return change.result()
