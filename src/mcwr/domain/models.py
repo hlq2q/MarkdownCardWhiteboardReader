@@ -19,6 +19,15 @@ CardId = str
 
 SNAPSHOT_SCHEMA_VERSION: Final[int] = 1
 
+MAX_CARDS: Final[int] = 200
+"""Largest document we lay out with rich content (decision D-023).
+
+A document with more cards is still opened, but the offscreen math/diagram rendering is
+switched off and those cards keep their source text (decision D-029): the browser path is
+the heaviest thing in the application, so dropping it is what keeps a 201+ card document
+interactive instead of turning it into a stall.
+"""
+
 
 # --------------------------------------------------------------------------- blocks
 

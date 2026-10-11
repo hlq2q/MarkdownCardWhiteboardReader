@@ -25,7 +25,7 @@ from mcwr.application.features.detach_restore.service import can_detach
 from mcwr.application.features.persist_layout.ports import LayoutStore
 from mcwr.application.features.render_card.ports import WebCardRenderer
 from mcwr.application.features.render_card.service import card_image, needs_web_render
-from mcwr.domain.models import CardId, WindowState
+from mcwr.domain.models import MAX_CARDS, CardId, WindowState
 from mcwr.interfaces.gui.board_view import BoardScene, BoardView
 from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.session import BoardSession
@@ -396,6 +396,15 @@ class MainWindow(QMainWindow):
         document = self.session.document
         if document is None:
             return
+        if self.session.over_limit:
+            # One line per load, next to the status-bar notice (D-029): whoever reads the log
+            # later must see that the missing formulas are a deliberate downgrade.
+            logger().warning(
+                "{}: {} cards exceed the {} limit; rich rendering is off, cards show source text",
+                document.document.path.name,
+                self.session.card_count,
+                MAX_CARDS,
+            )
         blocks = self.session.blocks
         for card_id in document.tree.ordered_ids():
             card = document.tree.cards[card_id]
@@ -418,7 +427,10 @@ class MainWindow(QMainWindow):
         and a first-time KaTeX/Mermaid render never blocks the window from appearing.
         """
         document = self.session.document
-        if document is None:
+        if document is None or self.session.over_limit:
+            # D-029: over the card limit the heavy path is skipped entirely — no queue, no
+            # pending badges, and the math/mermaid cards keep the text drawn from their
+            # source. This is also what keeps a 201+ card document interactive.
             return
         bucket = self._current_bucket()
         theme = self._theme.value

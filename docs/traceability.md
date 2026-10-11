@@ -30,13 +30,13 @@
 | D-020 初版回溯范围 | 四件套内容 | `TASKS.md` T-001..T-023、`DECISIONS.md` D-001..D-020、`ERRORS.md` E-001..E-015 | ✅ |
 | D-021 视觉规范 | `docs/visual-spec.md`、`interfaces/gui/theme.py`、`card_item.py`、`board_view.py`、`main_window.py`、`web_renderer`（主题参数 + shell 取色） | `interfaces/gui/test_theme.py`（槽位/无纯黑白/对比度/发布比值）、`tests/integration/test_theme_switch.py`、`infrastructure/test_web_renderer.py`（深色位图） | ✅ |
 | D-022 渲染稳定性最高优先级 | `web_renderer.shared_renderer`（单例）、`_render` 空白重试、`card_item` 占位徽标、`shared/logging.py`、`tests/integration/conftest.py` | `tests/integration/test_render_stability.py`（10 条各一测）、`test_body_render.py`、`infrastructure/test_web_renderer.py`；全量 286 项 | ✅ |
-| D-023 200 卡片上限 | `load_document` / `build_card_tree` 需暴露总数与超限标记（未实现） | 待 T-025（200 正常 / 201 降级） | ⏳ |
+| D-023 200 卡片上限 | `domain/models.MAX_CARDS`、`LoadedDocument.card_count`/`.over_limit`、`BoardSession.card_count`/`.over_limit` | `application/features/load_document/test_service.py`（200 不越界 / 201 越界 / 钉住 `MAX_CARDS == 200`）、`tests/integration/test_card_limit.py` | ✅ |
 | D-024 任务列表单独成卡 | `domain/enums.CARD_KIND_BY_BLOCK[TASK_LIST]`（既有行为） | `infrastructure/test_markdown_it_adapter.py::test_task_list_counts_checked_items` | ✅ |
 | D-025 目录卡片跳转 | `main_window`（未实现） | 待 T-021 | ⏳ |
 | D-026 显示名统一 | 窗口标题、README（现状 `Markdown Card Whiteboard Reader`） | — | ❓ 待确认字符串 |
 | D-027 代码签名 | 构建/签名脚本（未实现） | 待 T-022 | ⏳ |
 | D-028 逐项完成 | `TASKS.md` 任务表（同时只允许 1 条 `doing`）、每个任务一次提交 | `git log --oneline`（一任务一提交） | ✅ |
-| D-029 超限降级表现 | `main_window._queue_body_images` 需按卡片总数短路（未实现） | 待 T-025 | ⏳ |
+| D-029 超限降级表现 | `main_window._queue_body_images` 短路、`session.limit_notice`、`_rebuild_items` 记一条日志 | `tests/integration/test_card_limit.py`（降级/原文绘制/仍可刷新） | ✅ |
 | D-030 主题默认跟随系统 + 可切换 | `interfaces/gui/theme.py::resolve_theme` / `system_is_dark`、`main_window.apply_theme`、`shared/config.py` | `test_theme.py::test_follow_the_system_resolves_both_ways`、`test_config.py`、`test_theme_switch.py::test_the_chosen_mode_is_remembered_across_windows` | ✅ |
 | D-031 主题实现细节 | `theme.py`、`card_item.py::set_palette`、`web_renderer._ensure_page_theme` + `mcwrSetTheme` + `_shell_file_name` | `test_theme_switch.py::test_switching_the_theme_changes_no_layout_field`、`test_web_renderer.py::test_the_cache_key_separates_the_two_themes`、`::test_the_shell_file_is_content_addressed` | ✅ |
 | D-032 视觉遗留取值（高亮/色条/阴影） | 待 T-029（Pygments 样式）、T-028（3 px 色条，取值见 `docs/visual-spec.md` §6.1）；阴影保持 1 px 近似 | 待两个任务落地 | ⏳ |
@@ -61,7 +61,7 @@
 | 缺口 | 决策 / 任务 | 状态 |
 | --- | --- | --- |
 | `docs/visual-spec.md` 未产出、双主题未实现 | D-021 / T-024 | ✅ 已交付（③④ 见 `test_theme_switch.py`，含 E-021 修复）；遗留已转为任务：语法高亮 **T-029**、层级色条 **T-028**（D-032），阴影不做模糊 |
-| 200 卡片上限与降级未实现 | D-023 D-029 / T-025 | ⏳ |
+| 200 卡片上限与降级未实现 | D-023 D-029 / T-025 | ✅ 已交付（`test_card_limit.py`；201 卡实测打开 0.03–0.05 s、零离屏渲染） |
 | 渲染稳定性 10 条未逐条给出证据 | D-022 / T-026 | ✅ 10 条证据齐（`test_render_stability.py` + `docs/render-stability.md`） |
 | app 路径渲染偶发 xfail | E-013 / T-016 | ✅ 已修（连续 16 次全绿；根因 E-016/E-017） |
 | 目录卡片点击跳转未实现 | D-025 / T-021 | ⏳ |

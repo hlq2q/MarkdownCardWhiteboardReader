@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mcwr.application.features.load_document.models import LoadedDocument
 from mcwr.application.features.load_document.service import load_document
 from mcwr.application.features.parse_document.models import SourceText
 from mcwr.domain.enums import BlockKind
 from mcwr.domain.ids import normalize_text
-from mcwr.domain.models import Block
+from mcwr.domain.models import MAX_CARDS, Block
 
 
 class FakeReader:
@@ -102,3 +103,40 @@ def test_content_edit_changes_hash_but_not_card_ids(tmp_path: Path) -> None:
     )
     assert before.tree.ordered_ids() == after.tree.ordered_ids()
     assert before.document.content_hash != after.document.content_hash
+
+
+# --------------------------------------------------------------- card limit (T-025)
+
+
+def _headings(count: int) -> tuple[Block, ...]:
+    """``count`` heading cards, each with one paragraph of its own content."""
+    blocks: list[Block] = []
+    for index in range(count):
+        blocks.append(heading(index * 2, f"H{index}", 1))
+        blocks.append(paragraph(index * 2 + 1, f"body {index}"))
+    return tuple(blocks)
+
+
+def _load(tmp_path: Path, headings: int) -> LoadedDocument:
+    return load_document(
+        tmp_path / "doc.md",
+        reader=FakeReader("x"),
+        parser=FakeParser(_headings(headings)),
+    )
+
+
+def test_the_product_limit_is_two_hundred_cards() -> None:
+    """Pins the D-023 value; a change here must be a deliberate decision, not a drift."""
+    assert MAX_CARDS == 200
+
+
+def test_a_document_at_the_limit_is_not_flagged(tmp_path: Path) -> None:
+    loaded = _load(tmp_path, MAX_CARDS - 1)  # + the implicit big-section card = 200
+    assert loaded.card_count == MAX_CARDS
+    assert loaded.over_limit is False
+
+
+def test_one_card_more_than_the_limit_is_flagged(tmp_path: Path) -> None:
+    loaded = _load(tmp_path, MAX_CARDS)  # 201 cards
+    assert loaded.card_count == MAX_CARDS + 1
+    assert loaded.over_limit is True

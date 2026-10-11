@@ -19,6 +19,7 @@
 | 十项验收标准 | ✅ | tests/integration/test_acceptance.py（逐条对应 §1.5） |
 | 公式 / Mermaid 离屏渲染（D14） | ✅ | 46 项渲染测试；App 内实测数学卡出 `E = mc²`、Mermaid 卡出流程图；打包后自检 `rendered_images=2/2` |
 | 视觉规范 + 双主题（跟随系统/浅色/深色） | ✅ | docs/visual-spec.md（取值唯一来源）+ `interfaces/gui/theme.py`；`tests/integration/test_theme_switch.py` 6 项（切换不动任何布局字段）、深色真实位图像素断言 |
+| 200 卡片上限与超限降级（D-023/D-029） | ✅ | 201 卡合成文档实测打开 0.03–0.05 s；`tests/integration/test_card_limit.py` 4 项：超限后零离屏渲染、公式按原文绘制、状态栏与日志各一次提示 |
 | 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行

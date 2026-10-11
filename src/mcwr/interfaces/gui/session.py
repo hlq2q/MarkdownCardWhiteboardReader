@@ -34,6 +34,7 @@ from mcwr.application.features.persist_layout.service import persist_snapshot, r
 from mcwr.application.features.refresh_document.service import plan_refresh
 from mcwr.domain.errors import McwrError
 from mcwr.domain.models import (
+    MAX_CARDS,
     SNAPSHOT_SCHEMA_VERSION,
     Block,
     BoardSnapshot,
@@ -44,6 +45,15 @@ from mcwr.domain.models import (
     WindowState,
 )
 from mcwr.infrastructure.heuristic_sizer import HeuristicSizeEstimator
+
+
+def limit_notice(card_count: int) -> str:
+    """The degraded-mode notice sent once per load (D-023/D-029).
+
+    The window shortens it before it reaches the status bar; the full sentence stays here so
+    both the open and the refresh path say exactly the same thing.
+    """
+    return f"超限：{card_count} 张卡片（上限 {MAX_CARDS}），公式/图表按原文显示"
 
 
 class BoardSession(QObject):
@@ -109,6 +119,20 @@ class BoardSession(QObject):
     def is_open(self) -> bool:
         return self._document is not None
 
+    @property
+    def card_count(self) -> int:
+        """Cards in the open document, or 0 when nothing is open (T-025 acceptance ①)."""
+        return 0 if self._document is None else self._document.card_count
+
+    @property
+    def over_limit(self) -> bool:
+        """Whether the open document exceeds ``MAX_CARDS``, i.e. runs in degraded mode.
+
+        D-029: past the limit the offscreen math/diagram rendering is switched off and those
+        cards keep their source text; every other feature behaves normally.
+        """
+        return self._document is not None and self._document.over_limit
+
     # ----------------------------------------------------------------- write side
 
     def open(self, path: Path) -> bool:
@@ -144,6 +168,8 @@ class BoardSession(QObject):
             f"opened {loaded.document.path.name}: {len(loaded.tree.cards)} cards, "
             f"{len(loaded.blocks)} blocks, {restored_count} layouts restored"
         )
+        if loaded.over_limit:
+            self.status.emit(limit_notice(loaded.card_count))
         return True
 
     def detach(self, card_id: CardId) -> LayoutChange:
@@ -209,6 +235,8 @@ class BoardSession(QObject):
             self.status.emit("结构变化较大，已按新结构重建")
         else:
             self.status.emit(f"已刷新：{len(loaded.tree.cards)} 张卡片（新增 {new_count}）")
+        if loaded.over_limit:
+            self.status.emit(limit_notice(loaded.card_count))
         return True
 
     # --------------------------------------------------------------- persistence
