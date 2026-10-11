@@ -15,10 +15,30 @@ MODULE_ARGV = ("-m", "mcwr.interfaces.gui.app")
 
 def run(path: Path | None = None, argv: list[str] | None = None) -> int:
     """Start the Qt event loop with one window per process (decision D10)."""
+    prepare_webengine()
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
     window = MainWindow(path)
     window.show()
     return int(app.exec())
+
+
+def prepare_webengine() -> bool:
+    """Ready QtWebEngine before the QApplication exists (D14).
+
+    QtWebEngine requires the shared-GL-context attribute to be set **before** a
+    QGuiApplication is constructed, and its Chromium flags must be in the environment
+    before the engine initialises. Import failures (a stripped build, no WebEngine) are
+    tolerated: the renderer is then simply unavailable and math/mermaid cards keep their
+    text form (FR-1.5).
+    """
+    from PySide6.QtCore import QCoreApplication, Qt
+
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+    try:
+        import mcwr.infrastructure.web_renderer  # noqa: F401  # sets the engine env vars
+    except ImportError:  # pragma: no cover - depends on the installed Qt build
+        return False
+    return True
 
 
 def spawn_new_window(path: Path | None = None, *, parent_pid: int | None = None) -> bool:

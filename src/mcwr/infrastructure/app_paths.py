@@ -54,6 +54,11 @@ def cache_dir() -> Path:
     return Path.home() / HOME_FALLBACK_NAME / "Cache"
 
 
+def assets_dir() -> Path:
+    """Return the bundled web assets (KaTeX + Mermaid) shipped inside the package."""
+    return Path(__file__).resolve().parents[1] / "assets" / "web"
+
+
 def _read_env(name: str) -> Path | None:
     """Return an environment variable as a non-empty path, or ``None``."""
     raw = os.environ.get(name, "").strip()

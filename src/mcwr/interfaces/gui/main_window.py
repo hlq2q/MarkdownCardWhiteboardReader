@@ -6,8 +6,8 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QResizeEvent
+from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 from mcwr import container
 from mcwr.application.features.detach_restore.service import can_detach
 from mcwr.application.features.persist_layout.ports import LayoutStore
+from mcwr.application.features.render_card.ports import WebCardRenderer
+from mcwr.application.features.render_card.service import card_image, needs_web_render
 from mcwr.domain.models import CardId, WindowState
 from mcwr.interfaces.gui.board_view import BoardScene, BoardView
 from mcwr.interfaces.gui.card_item import CardItem
@@ -38,6 +40,7 @@ class MainWindow(QMainWindow):
         path: Path | None = None,
         *,
         store: LayoutStore | None = None,
+        renderer: WebCardRenderer | None = None,
         session_id: str = "",
         window_uuid: str = "",
         persist: bool = True,
@@ -56,6 +59,15 @@ class MainWindow(QMainWindow):
         self._items: dict[CardId, CardItem] = {}
         self._zoom_box: QComboBox | None = None
         self._overlay = QWidget(self)
+        self._renderer = renderer
+        self._pixmaps: dict[tuple[CardId, float], QPixmap] = {}
+        self._image_queue: list[CardId] = []
+        self._image_timer = QTimer(self)
+        self._image_timer.setSingleShot(True)
+        self._image_timer.timeout.connect(self._render_next_body)
+        self._zoom_timer = QTimer(self)
+        self._zoom_timer.setSingleShot(True)
+        self._zoom_timer.timeout.connect(self._queue_body_images)
 
         self._build_actions()
         self._build_overlay()
@@ -245,6 +257,74 @@ class MainWindow(QMainWindow):
             self._items[card_id] = item
         self._reparent_items()
         self._apply_geometry(tuple(self._items))
+        self._queue_body_images()
+
+    # ---------------------------------------------------------------- body images
+
+    def _queue_body_images(self) -> None:
+        """Schedule offscreen renders for the math / mermaid cards (D14, R2).
+
+        Rendering is deferred one card per event-loop turn so the board stays responsive
+        and a first-time KaTeX/Mermaid render never blocks the window from appearing.
+        """
+        document = self.session.document
+        if document is None:
+            return
+        bucket = self._current_bucket()
+        pending = [
+            card_id
+            for card_id, card in document.tree.cards.items()
+            if card_id in self._items
+            and needs_web_render(card)
+            and (card_id, bucket) not in self._pixmaps
+        ]
+        if not pending:
+            return
+        self._image_queue = pending
+        self._image_timer.start(0)
+
+    def _current_bucket(self) -> float:
+        """The render bucket for the current zoom; falls back to a 0.5 step."""
+        renderer = self._renderer
+        scale = self.view.zoom_percent() / 100.0
+        bucket_for = getattr(renderer, "bucket_for", None)
+        if callable(bucket_for):
+            return float(bucket_for(scale))
+        return round(scale * 2) / 2
+
+    def _render_next_body(self) -> None:
+        """Render one queued card, then reschedule itself until the queue drains."""
+        if not self._image_queue:
+            return
+        document = self.session.document
+        card_id = self._image_queue.pop(0)
+        if document is None:
+            return
+        card = document.tree.cards.get(card_id)
+        item = self._items.get(card_id)
+        if card is None or item is None:
+            self._image_timer.start(0)
+            return
+
+        renderer = self._renderer
+        if renderer is None:
+            renderer = container.build_web_renderer()
+            self._renderer = renderer
+        path = card_image(
+            card, self.session.blocks, renderer=renderer, scale=self.view.zoom_percent() / 100.0
+        )
+        if path is not None:
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                self._pixmaps[(card_id, self._current_bucket())] = pixmap
+                item.set_image(pixmap)
+        else:
+            reason = getattr(renderer, "last_error", None) or "unknown reason"
+            self.statusBar().showMessage(
+                f"{card.kind} card kept its text form: rendering unavailable ({reason})"
+            )
+        if self._image_queue:
+            self._image_timer.start(0)
 
     def _reparent_items(self) -> None:
         """Attach each item to its parent item unless the card is a free card (FR-4.2)."""
@@ -298,6 +378,7 @@ class MainWindow(QMainWindow):
             float(self.view.horizontalScrollBar().value()),
             float(self.view.verticalScrollBar().value()),
         )
+        self._zoom_timer.start(400)  # re-render only after the zoom settles (D14 buckets)
 
     def _is_hidden(self, card_id: CardId) -> bool:
         """A card inside a folded ancestor is hidden but keeps its remembered geometry."""

@@ -24,6 +24,24 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _prepare_webengine() -> None:
+    """QtWebEngine needs its attribute, env flags and imports before QApplication.
+
+    Mirrors :func:`mcwr.interfaces.gui.app.prepare_webengine` so the GUI tests exercise
+    the same startup ordering the real window uses (decision D14).
+    """
+    try:
+        from PySide6.QtCore import QCoreApplication, Qt
+
+        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+        import mcwr.infrastructure.web_renderer  # noqa: F401  # sets the engine env vars
+    except Exception:  # noqa: BLE001 - a build without WebEngine still runs the tests
+        pass
+
+
+_prepare_webengine()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def qapp() -> None:
     """One QApplication for the whole test session (Qt allows only one)."""
