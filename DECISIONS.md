@@ -1,6 +1,6 @@
 # DECISIONS — 关键决策
 
-- 最后更新：2026-10-12 07:05:44 +08:00
+- 最后更新：2026-10-12 16:18:37 +08:00
 - 状态枚举：仅 proposed / accepted / rejected / superseded
 - 说明：D-001..D-015 对应 `docs/requirements-spec.md` §0.1 的台账 D1–D15（同一批决策，本文是权威索引）；D-016..D-020 为工程与流程决策。**理由列只写用户实际给出的取舍**；若用户仅选定选项而未陈述理由，写「选定该选项」并附上该选项当时声明的取舍（标注为选项描述）。
 
@@ -371,4 +371,16 @@
 - 理由：全部服从 FR-2.4 / F10 与用户对本轮两个问题的回答；不引入新设置项，也不改变无 `[TOC]` 文档的任何既有行为。
 - 影响：新增切片 `application/features/build_toc/`；`interface/gui/card_item.py` 生成条目 Markdown 并用 `QTextCharFormat.isAnchor()` 做命中判定、`link_clicked` 信号；`session.reveal()`；`main_window._on_link_clicked`。顺带修两处既有缺陷：TOC 卡高度只算 1 行（见第 5 点）、普通点击也会发 `moved` 并覆盖状态栏提示（现在只有真正移动才发）。T-020（大纲导航）可直接复用 `reveal` + `centerOn`。
 - 关联任务：T-021
+
+## D-034 T-022 的验收口径与签名材料边界
+
+- 日期：2026-10-12
+- 状态：accepted
+- 背景：T-022 的验收原文写"在干净环境安装后启动成功"，而本机没有第二台机器（`ssh_list` 无主机）、没有 Windows Sandbox（`WindowsSandbox.exe` 不存在、Hyper-V 未安装、无 hypervisor）；同时实测本机**没有任何代码签名证书**（`Cert:\CurrentUser\My`、`LocalMachine\My`、`TrustedPublisher` 的 Code Signing EKU 均为 0），存储里唯一自签证书 `CN=fe241adb-…` 只能验证签名流水线、过不了 SmartScreen。
+- 选项与决定（用户答）：
+  1. **验收口径 = 本机近似干净环境**：全新安装目录 + 空的应用数据/日志目录 + 净化环境变量（不依赖项目 venv），并在交付说明里**如实标注它不是独立机器**；不要求第二台机器，也不要求启用 Windows Sandbox。
+  2. **开工时机 = 先不开工**：等用户提供签名材料后再做 T-022 —— (a) 证书已在存储 → **Thumbprint**；或 (b) `.pfx` 文件 → **绝对路径** + 环境变量 `MCWR_SIGN_PFX_PASSWORD`（口令不进聊天、不进仓库）。
+- 理由：签名材料只能由证书持有者提供（购买需实名/企业资料、付款、与 CA 签约；EV 还需硬件令牌），我无法代取；验收口径由用户选定，避免把"近似"含糊说成"干净环境"。
+- 影响：`TASKS.md` T-022 的验收标准与阻塞项 1 按此改写为"证书材料"；`packaging/sign.ps1`（待写）只从 Thumbprint/环境变量取参数；`dist/` 目前为空，动手时需先重建冻结包；工具链已就绪（`signtool.exe` ✓、`Inno Setup 6` ✓）。
+- 关联任务：T-022
 
