@@ -33,7 +33,7 @@
 | D-023 200 卡片上限 | `domain/models.MAX_CARDS`、`LoadedDocument.card_count`/`.over_limit`、`BoardSession.card_count`/`.over_limit` | `application/features/load_document/test_service.py`（200 不越界 / 201 越界 / 钉住 `MAX_CARDS == 200`）、`tests/integration/test_card_limit.py` | ✅ |
 | D-024 任务列表单独成卡 | `domain/enums.CARD_KIND_BY_BLOCK[TASK_LIST]`（既有行为） | `infrastructure/test_markdown_it_adapter.py::test_task_list_counts_checked_items` | ✅ |
 | D-025 目录卡片跳转 | `application/features/build_toc/`、`card_item.link_clicked`/`anchor_at`、`session.reveal`、`main_window._on_link_clicked`、`markdown_it_adapter._stamp_toc_entries` | `tests/integration/test_toc_navigation.py`（`QTest` 真点击 → 视口中心落在目标卡内、折叠祖先逐级展开）、`build_toc/test_service.py`、`detach_restore/test_service.py::test_expanding_ancestors_*` | ✅ |
-| D-026 显示名统一 | 窗口标题、README（现状 `Markdown Card Whiteboard Reader`） | — | ❓ 待确认字符串 |
+| D-026 显示名统一 | `mcwr.PRODUCT_NAME`、`main_window` 窗口标题（两处）、`README.md` 标题、CLI `--help` 文案 | `tests/integration/test_gui_smoke.py::test_the_window_title_uses_the_product_display_name`（并断言与 `app_paths.APP_DIR_NAME` 同步） | ✅ |
 | D-027 代码签名 | 构建/签名脚本（未实现） | 待 T-022 | ⏳ |
 | D-028 逐项完成 | `TASKS.md` 任务表（同时只允许 1 条 `doing`）、每个任务一次提交 | `git log --oneline`（一任务一提交） | ✅ |
 | D-029 超限降级表现 | `main_window._queue_body_images` 短路、`session.limit_notice`、`_rebuild_items` 记一条日志 | `tests/integration/test_card_limit.py`（降级/原文绘制/仍可刷新） | ✅ |

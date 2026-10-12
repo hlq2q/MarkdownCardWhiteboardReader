@@ -1,6 +1,6 @@
 # TASKS — 任务与状态
 
-- 最后更新：2026-10-12 16:24:00 +08:00
+- 最后更新：2026-10-12 16:27:10 +08:00
 - 状态枚举：仅 todo / doing / blocked / done
 
 ## 1. 当前目标
@@ -56,6 +56,7 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | T-027 | 收敛 docs/traceability.md 与四件套边界 | done | 中 | 无 | traceability 只保留「决策 → 代码位置 → 测试名」映射与验收映射；理由/影响一律指向 `DECISIONS.md` | 0.5 h | 0.5 h | D-021 之后 | 本轮完成 |
 | T-028 | 卡片左侧 3 px 层级色条（4 档，取值见 D-032） | todo | 中 | 无 | 左侧 3 px 色条按嵌套深度取 `docs/visual-spec.md` §6.1 的 4 档值；浅/深各一套；第 5 级及更深沿用第 4 档；新增测试断言「深度→颜色」映射、3 px 宽度、两套主题取值互不相同 | 1–2 h | — | D-032 D-021 | 取值由用户给定；不启用蓝色备选组 |
 | T-029 | 代码卡片语法高亮（Pygments） | todo | 中 | 无 | `QTextDocument` 渲染路径按主题选用两套 Pygments 样式；浅/深下关键字/注释/字符串可区分；新增测试断言两套样式不同、深色下关键字与代码块底色对比度 ≥ 4.5:1 | 2–4 h | — | D-032 D-021 | `pygments` 已在依赖中；样式选择留在 interfaces/infrastructure，`application` 不得 import pygments |
+| T-030 | 落地显示名 `MarkdownCardWhiteboardReader` | done | 中 | 无（原挂靠 T-022，已取消） | 窗口标题与 README 标题统一为 `MarkdownCardWhiteboardReader` **✅**；测试断言标题字符串，且断言它与 `app_paths.APP_DIR_NAME` 同步 **✅** | 0.5 h | 0.3 h | D-026 D-035 | 实现：`mcwr.PRODUCT_NAME` 单一常量（`__init__.py`），窗口标题两处 + CLI `--help` + README 标题引用它（可执行文件名仍为 `mcwr.exe`）；新增 `test_gui_smoke.py::test_the_window_title_uses_the_product_display_name`（含与目录名同步的断言）；真实 CLI 实测 `mcwr --help` 显示新名；`ruff`/`mypy --strict`（80 文件）干净、全量 `pytest -q` 退出码 0（315 项） |
 | — | **T-026 的 10 条证据**（下表为 T-026 行的展开，不单独编号） | | | | | | | |
 | ① | 分层：`domain`/`application` 不依赖 Qt 与具体库 | | | | `tests/integration/test_render_stability.py::test_item_1_application_and_domain_do_not_import_gui_or_libraries`（并断言扫描到 ≥20 个文件，防空跑通过） | | | | |
 | ② | 错误隔离：单卡渲染失败不影响整板 | | | | `tests/integration/test_body_render.py::test_a_failing_renderer_degrades_to_text_without_crashing` | | | | |
@@ -88,7 +89,7 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 
 ## 5. 下一步行动
 
-**当前状态：暂停推进任务**（用户 2026-10-12 07:05 指示）；`doing` = 0 条，工作区干净。**T-022 已取消**（D-035：本机自用、不发布，不需要安装包与代码签名；原阻塞项一并撤销）。
+**当前状态：暂停推进任务**（用户 2026-10-12 07:05 指示）；`doing` = 0 条，工作区干净。**T-030 已按你的选择落地**（显示名，实际 0.3 h）；**T-022 已取消**（D-035），本机启动方式按你的选择保持源码命令（`python -m uv run mcwr gui <file.md>`）。
 
 候选（按 §1 顺序）：**T-020**（大纲导航，3–4 h，可直接复用 T-021 的 `session.reveal` + `centerOn` 定位链路）→ T-017（渲染缓存上限，1–2 h）→ T-018（大文档压测，3–5 h）→ T-019（搜索定位，4–6 h）；另有 T-028（层级色条，1–2 h）与 T-029（Pygments 语法高亮，2–4 h）；**待你决定**：D-026 的显示名 `MarkdownCardWhiteboardReader` 是否单独落地（估 0.5 h）。
 

@@ -1,6 +1,6 @@
 # DECISIONS — 关键决策
 
-- 最后更新：2026-10-12 16:24:00 +08:00
+- 最后更新：2026-10-12 16:27:10 +08:00
 - 状态枚举：仅 proposed / accepted / rejected / superseded
 - 说明：D-001..D-015 对应 `docs/requirements-spec.md` §0.1 的台账 D1–D15（同一批决策，本文是权威索引）；D-016..D-020 为工程与流程决策。**理由列只写用户实际给出的取舍**；若用户仅选定选项而未陈述理由，写「选定该选项」并附上该选项当时声明的取舍（标注为选项描述）。
 
@@ -286,8 +286,8 @@
 - 选项：1. `Markdown Card Whiteboard Reader`（原窗口标题）；2. `MarkdownCardWhiteboardReader`（与 `%APPDATA%` 目录名一致）
 - 决定：**选项 2 —— 面向用户的显示名统一为 `MarkdownCardWhiteboardReader`**（窗口标题、README 标题、安装包显示名、开始菜单项）；`app_paths.APP_DIR_NAME` 已经是该字符串，保持不变。
 - 理由：用户指定该字符串（显示名与 AppName 目录名同步）。
-- 影响：`main_window` 窗口标题、`README.md` 标题、`packaging/mcwr.spec` 的产物名保持 `mcwr.exe`（可执行文件名不改，仅显示名统一）；实现归 T-022 一并做，避免此刻零散改动。
-- 关联任务：T-022
+- 影响：`main_window` 窗口标题、`README.md` 标题、`packaging/mcwr.spec` 的产物名保持 `mcwr.exe`（可执行文件名不改，仅显示名统一）；实现随 **T-022** 一并做 → **T-022 已于 D-035 取消**，故改由 **T-030** 落地（窗口标题、README 标题、CLI `--help`；安装包/开始菜单项不再适用）。
+- 关联任务：T-030（原关联 T-022）
 
 ## D-027 代码签名证书已具备（安装包可排期）
 

@@ -452,7 +452,7 @@ src/app/
 
 ### 7.2 非阻塞待确认（不猜测，逐项记录）
 
-1. 应用显示名、Python 包名、`AppName` 目录名（FR-7.2 需要一个确定值）。
+1. 应用显示名、Python 包名、`AppName` 目录名 → **已定**：显示名 = `MarkdownCardWhiteboardReader`（与目录名一致，`DECISIONS.md` D-026；实现见 T-030）；包名 `mcwr`、分发名 `markdown-card-whiteboard`。
 2. 视觉规范：配色/字体/圆角/阴影、卡片默认宽高与间距、类型图标集合；是否支持深色主题。
 3. 打开方式：命令行参数、拖拽入窗、Windows 文件关联/右键"用本应用打开"。
 4. 目录卡片来源 → **已定**：**仅在写了 `[TOC]`/`[[TOC]]` 处**生成可点击条目；条目包含全部标题 H1–H6（`DECISIONS.md` D-033，实现与证据见 `TASKS.md` T-021）。

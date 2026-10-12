@@ -1,8 +1,8 @@
 # PROJECT_MAP — 项目全貌
 
-- 项目名称：Markdown Card Whiteboard Reader（包名 `mcwr`，分发名 `markdown-card-whiteboard`）
+- 项目名称：**显示名 `MarkdownCardWhiteboardReader`**（D-026，与 `%APPDATA%` 目录名一致）；包名 `mcwr`，分发名 `markdown-card-whiteboard`
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 16:24:00 +08:00
+- 最后更新：2026-10-12 16:27:10 +08:00
 
 ## 1. 项目目标
 

@@ -9,14 +9,14 @@ from typing import Annotated
 
 import typer
 
-from mcwr import container
+from mcwr import PRODUCT_NAME, container
 from mcwr.domain.errors import McwrError
 from mcwr.interfaces.cli.views import render_outline, tree_to_dict
 
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Markdown Card Whiteboard Reader — read-only CLI tools.",
+    help=f"{PRODUCT_NAME} — read-only CLI tools.",
 )
 
 
