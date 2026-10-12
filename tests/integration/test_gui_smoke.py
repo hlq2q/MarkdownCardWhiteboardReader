@@ -211,3 +211,18 @@ def test_a_new_session_does_not_share_the_previous_layout(tmp_path: Path) -> Non
     third = MainWindow(persist=False, store=store, session_id="session-a", window_uuid="w1")
     third.open_path(document_copy)
     assert third.session.layouts[code].x == 999.0, "session A must keep its own layout"
+
+
+def test_the_window_title_uses_the_product_display_name() -> None:
+    """D-026 / T-030: one user-facing display name, kept in sync with the AppName folder."""
+    from mcwr import PRODUCT_NAME
+    from mcwr.infrastructure.app_paths import APP_DIR_NAME
+
+    assert PRODUCT_NAME == APP_DIR_NAME, (
+        "the display name must equal the %APPDATA% folder name (D-026)"
+    )
+
+    window = MainWindow(persist=False)
+    assert window.windowTitle() == PRODUCT_NAME
+    assert window.open_path(SAMPLE) is True
+    assert window.windowTitle() == f"{SAMPLE.name} — {PRODUCT_NAME}"

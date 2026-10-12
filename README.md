@@ -1,4 +1,4 @@
-# Markdown Card Whiteboard Reader
+# MarkdownCardWhiteboardReader
 
 把一份 Markdown 解析成卡片树（分隔线大卡片 + 标题嵌套），在可缩放白板中做非线性阅读的 **Windows 只读桌面工具**。
 源 Markdown 文件是唯一内容源，应用**永不写入**该文件及其所在目录。

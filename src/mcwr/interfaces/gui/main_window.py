@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from mcwr import container
+from mcwr import PRODUCT_NAME, container
 from mcwr.application.features.build_toc.models import TocEntry
 from mcwr.application.features.build_toc.service import resolve_anchor
 from mcwr.application.features.detach_restore.service import can_detach
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         persist: bool = True,
     ) -> None:
         super().__init__()
-        self.setWindowTitle("Markdown Card Whiteboard Reader")
+        self.setWindowTitle(PRODUCT_NAME)
         self.resize(1400, 900)
 
         self._persist = persist
@@ -346,7 +346,7 @@ class MainWindow(QMainWindow):
     def open_path(self, path: Path) -> bool:
         opened = self.session.open(path)
         if opened:
-            self.setWindowTitle(f"{path.name} — Markdown Card Whiteboard Reader")
+            self.setWindowTitle(f"{path.name} — {PRODUCT_NAME}")
             self.view.fit_cards()
         return opened
 
