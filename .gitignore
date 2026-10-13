@@ -27,3 +27,6 @@ spikes/_out/
 .idea/
 .vscode/
 *.swp
+
+# Inno Setup output (~150 MB): never commit the built installer (GitHub rejects >100 MB)
+packaging/Output/
