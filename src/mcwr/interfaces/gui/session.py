@@ -210,8 +210,8 @@ class BoardSession(QObject):
     def restore(self, card_id: CardId) -> LayoutChange:
         """Put a card back into its parent, at its natural size (T-057/D-053).
 
-        A scaled card is reset first: one going back into the column must not carry a size the column
-        cannot hold -- the mistake the user asked to avoid.
+        A scaled card is reset first: one going back into the column must not carry a size the
+        column cannot hold -- the mistake the user asked to avoid.
         """
         if self.reset_scale(card_id):
             self.status.emit("the card was scaled back before restoring it")
