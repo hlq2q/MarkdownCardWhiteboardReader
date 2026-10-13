@@ -610,7 +610,7 @@ class BoardSession(QObject):
             self._layouts,
             root,
             blocks=self.blocks,
-            estimator=self._estimator,
+            estimator=self._layout_estimator(),
             options=self._options,
         )
         delta = self._layouts[root].height - before
