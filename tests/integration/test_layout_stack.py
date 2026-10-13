@@ -225,15 +225,16 @@ def test_a_drag_from_the_title_bar_grabs_that_card(window: MainWindow) -> None:
     """E-027: Qt's delivery skips a card whose title bar is pressed; the view takes over."""
     document = window.session.document
     assert document is not None
-    root_id = document.tree.root_ids[0]
     g_id = _id(window, "G")
+    # The first root *is* G now (no wrapper card, T-055), so compare against the other root.
+    other_root = _id(window, "H")
     window.session.detach(g_id)
     _settle()
     before_card = _box(window, g_id)
-    before_root = _box(window, root_id)
+    before_other = _box(window, other_root)
     _drag_card(window, "G", offset_y=10.0)
     assert _box(window, g_id)[1] > before_card[1], "the grabbed card must be the one that moves"
-    assert _box(window, root_id) == before_root, "the card behind it must stay put"
+    assert _box(window, other_root) == before_other, "the card behind it must stay put"
 
 
 def test_a_title_bar_press_on_a_frozen_child_moves_nothing(window: MainWindow) -> None:

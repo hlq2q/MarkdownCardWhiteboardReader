@@ -208,6 +208,13 @@ class BoardSession(QObject):
         return self._apply(detach_card(self._tree(), self._layouts, card_id), card_id)
 
     def restore(self, card_id: CardId) -> LayoutChange:
+        """Put a card back into its parent, at its natural size (T-057/D-053).
+
+        A scaled card is reset first: one going back into the column must not carry a size the column
+        cannot hold -- the mistake the user asked to avoid.
+        """
+        if self.reset_scale(card_id):
+            self.status.emit("the card was scaled back before restoring it")
         return self._apply(restore_card(self._tree(), self._layouts, card_id), card_id)
 
     def reclaim(self, card_id: CardId) -> LayoutChange:
@@ -261,7 +268,9 @@ class BoardSession(QObject):
         if card.parent_id is not None and not layout.detached:
             return
         if snap:
-            x, y = snap_to_grid(x, y)
+            # Edges first, the grid second -- the same rule a group drop follows (D-051/D-052).
+            dx, dy = self._snapped_group_delta([card_id], x - layout.x, y - layout.y)
+            x, y = layout.x + dx, layout.y + dy
         delta_x, delta_y = x - layout.x, y - layout.y
         layout.move_to(x, y)
         for child in card.child_ids:

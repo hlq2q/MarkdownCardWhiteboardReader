@@ -270,7 +270,7 @@ def test_a_dropped_card_settles_on_a_neighbours_edge(window: MainWindow) -> None
     b_layout = window.session.layouts[b_id]
     start = window.session.layouts[a_id]
     # Put A 6 px to the right of B's right edge, and keep its y where it is.
-    window.session.move_card(a_id, b_layout.x + b_layout.width + 6.0, start.y)
+    window.session.move_card(a_id, b_layout.x + b_layout.width + 6.0, start.y, snap=True)
     _settle()
     assert window.session.layouts[a_id].x == pytest.approx(b_layout.x + b_layout.width, abs=0.5), (
         "the edge snap must line the two cards up exactly"
