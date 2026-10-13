@@ -210,7 +210,10 @@ class BoardView(QGraphicsView):
         moved by its title bar.
         """
         if event.button() == Qt.MouseButton.RightButton:
-            # The right button starts a marquee; the menu stays away while it is up (D-052).
+            # The right button starts a marquee; the menu stays away while it is up (D-052). A plain
+            # right press means the user wants the menu again, so drop an earlier veto.
+            if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._menu_suppressed = False
             self._marquee_origin = event.position()
             self._marquee_dragged = False
             event.accept()
@@ -386,22 +389,24 @@ class BoardView(QGraphicsView):
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         """Ctrl + right double-click gives a scaled card its natural size back (T-057).
 
-        That gesture owns the right button, so the context menu stays away for it; any other double
-        click still centres the card under the cursor.
+        That gesture owns the right button, so the context menu stays away for it. Every other right
+        double click is left completely alone: a quick second right click must not scroll the board
+        out from under the user (that was the card jumping to the window edge). Only a left
+        double click activates a card, and it does not move the view either.
         """
-        if event.button() == Qt.MouseButton.RightButton and (
-            event.modifiers() & Qt.KeyboardModifier.ControlModifier
-        ):
-            card = self.top_card_at(self.mapToScene(event.position().toPoint()))
-            self._menu_suppressed = True
-            if card is not None:
-                self.scale_reset_requested.emit(card.card.card_id)
-            event.accept()
+        if event.button() == Qt.MouseButton.RightButton:
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                card = self.top_card_at(self.mapToScene(event.position().toPoint()))
+                self._menu_suppressed = True
+                if card is not None:
+                    self.scale_reset_requested.emit(card.card.card_id)
+                event.accept()
+                return
+            super().mouseDoubleClickEvent(event)
             return
         super().mouseDoubleClickEvent(event)
-        item = self.itemAt(event.position().toPoint())
+        item = self.top_card_at(self.mapToScene(event.position().toPoint()))
         if item is not None:
-            self.centerOn(QPointF(item.scenePos()))
             self.card_activated.emit(item)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:

@@ -989,10 +989,21 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- context menu
 
+    def _card_at(self, position: QPoint) -> CardItem | None:
+        """The card a menu request is about.
+
+        Qt's ``itemAt`` skips a card whose *title bar* holds the point (E-027), and the title bar is
+        exactly where a user right-clicks a card, so the card's own menu section used to vanish. The
+        view's rectangle hit test does not have that blind spot.
+        """
+        # The menu reports a *viewport* point, so this is viewport -> scene: mapToScene(). The
+        # reverse (mapFromScene) silently finds nothing here.
+        return self.view.top_card_at(self.view.mapToScene(position))
+
     def _show_context_menu(self, position: QPoint) -> None:
         if self.view.vetoes_context_menu(QApplication.keyboardModifiers()):
             return  # a marquee selection, or Ctrl, which owns the right button (D-052/T-057)
-        item = self.view.itemAt(position)
+        item = self._card_at(position)
         menu = QMenu(self)
         if isinstance(item, CardItem):
             self._fill_card_menu(menu, item.card.card_id)
