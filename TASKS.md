@@ -137,4 +137,4 @@ MVP 已完成并验证（含 PyInstaller onedir 打包与交付形态自检）�
 | ID | 任务 | 标记 | 取消依据 | 日期 |
 | --- | --- | --- | --- | --- |
 | T-022 | 安装包与代码签名（Inno Setup + signtool） | wontfix（取消） | **D-035**：用户明确"只在本机运行、不发布为商业项目"；本机自建 exe 不带 Mark-of-the-Web、不触发 SmartScreen，安装包与签名对本机自用无必要。原验收口径 D-034、原依据 D-027 均已标 `superseded` | 2026-10-12 |
-
+| T-067 | 应用图标接入打包 | 应用图标（用户提供 `MarkdownCardWhiteboardReader.ico`，9 尺寸 16–256、32bpp、432 KB）落入 `src/mcwr/assets/mcwr.ico`，由 `mcwr.spec` 作为 exe 图标嵌入、由 `mcwr-installer.iss` 作为 `SetupIconFile` 供安装程序与快捷方式使用 | 低 | 用户 2026-10-13 提供图标路径 |
