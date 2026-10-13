@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from mcwr.domain.enums import CardKind
 from mcwr.interfaces.gui.main_window import MainWindow
 
 DOCUMENT = """# Code card

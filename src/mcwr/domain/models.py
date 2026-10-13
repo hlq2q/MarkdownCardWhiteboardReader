@@ -161,6 +161,11 @@ class CardLayout:
     collapsed: bool = False
     detached: bool = False
     manual_size: bool = False
+    scale: float = 1.0
+    """Resize factor of this card's own subtree (T-057): 1.0 is the natural size."""
+
+    effective_scale: float = 1.0
+    """``scale`` times every ancestor's scale: the number the view draws with (T-064)."""
 
     def move_to(self, x: float, y: float) -> None:
         self.x = x

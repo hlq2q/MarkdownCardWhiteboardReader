@@ -478,7 +478,12 @@ class BoardSession(QObject):
             estimator=self._estimator,
             options=self._options,
         )
-        propagate_height(tree, self._layouts, root, self._layouts[root].height - before)
+        delta = self._layouts[root].height - before
+        if delta and not self._layouts[root].detached:
+            # A free card floats: it is not part of its parent's flow any more, so its own size
+            # change must not be carried up the ancestor chain. Doing that collapsed A to 0 while
+            # its item stayed 34 px tall -- the blank line where B used to be (E-034).
+            propagate_height(tree, self._layouts, root, delta)
         resolve_overlaps(tree, self._layouts, all_parents=True, options=self._options)
         hug_all(tree, self._layouts)
         self.cards_changed.emit(tuple(self._layouts))

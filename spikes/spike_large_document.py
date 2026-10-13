@@ -184,20 +184,6 @@ def frame_cost(window, steps: int) -> tuple[float, float, float]:
     return statistics.median(small), statistics.median(full), statistics.median(zooms)
 
 
-def repaint_only_cost(window, steps: int = 10) -> float:
-    """Median ms for a *bare* full-viewport repaint with nothing changed.
-
-    Separates "the paint itself costs this much" from "the scroll step costs this much": if
-    this equals the pan number, the cost is the paint, not the pan.
-    """
-    view = window.view
-    view.viewport().repaint()
-    timings: list[float] = []
-    for _ in range(steps):
-        started = time.perf_counter()
-        view.viewport().repaint()
-        timings.append((time.perf_counter() - started) * 1000.0)
-    return statistics.median(timings)
 
 
 def visible_item_count(window) -> int:
@@ -223,11 +209,6 @@ def repaint_only_cost(window, steps: int = 10) -> float:
     return statistics.median(timings)
 
 
-def visible_item_count(window) -> int:
-    """How many scene items the viewport actually paints (Qt's own culling answer)."""
-    view = window.view
-    rect = view.mapToScene(view.viewport().rect()).boundingRect()
-    return len(view.items(rect))
 
 
 def drag_cost(window, steps: int) -> float:

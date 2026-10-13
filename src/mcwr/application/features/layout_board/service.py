@@ -134,6 +134,7 @@ def layout_board(
     blocks: Mapping[int, Block],
     estimator: SizeEstimator,
     options: LinearLayoutOptions | None = None,
+    states: Mapping[CardId, CardLayout] | None = None,
 ) -> dict[CardId, CardLayout]:
     """Return a fresh attached layout for every card in ``tree``, in document order."""
     resolved = options or LinearLayoutOptions()

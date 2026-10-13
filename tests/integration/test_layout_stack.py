@@ -173,7 +173,7 @@ def test_a_child_inside_its_parent_cannot_be_dragged(window: MainWindow) -> None
     """T-043: its relative position is frozen, so a drag leaves it exactly where it was."""
     before = _rect(window, "B")
     item = window.card_items[_id(window, "B")]
-    _drag_card_down(window, "B")
+    _drag_card(window, "B")
     assert _rect(window, "B") == before
     assert item.scenePos() == QPointF(before[0], before[1])
     # ... and the domain refuses the move as well, not only the item flag (T-043).
@@ -187,7 +187,7 @@ def test_a_free_card_can_be_dragged_and_its_subtree_follows(window: MainWindow) 
     _settle()
     before_g = _rect(window, "G")
     before_p = _rect(window, "P")
-    _drag_card_down(window, "G")
+    _drag_card(window, "G")
     after_g = _rect(window, "G")
     after_p = _rect(window, "P")
     assert after_g[1] > before_g[1], "a free card must still be draggable"
@@ -250,28 +250,5 @@ def test_a_title_bar_press_on_a_frozen_child_moves_nothing(window: MainWindow) -
     assert _box(window, _id(window, "B")) == before_child
 
 
-def test_a_drag_from_the_title_bar_grabs_that_card(window: MainWindow) -> None:
-    """E-027: Qt's delivery skips a card whose title bar is pressed; the view takes over."""
-    document = window.session.document
-    assert document is not None
-    root_id = document.tree.root_ids[0]
-    g_id = _id(window, "G")
-    window.session.detach(g_id)
-    _settle()
-    before_card = _box(window, g_id)
-    before_root = _box(window, root_id)
-    _drag_card(window, "G", offset_y=10.0)
-    assert _box(window, g_id)[1] > before_card[1], "the grabbed card must be the one that moves"
-    assert _box(window, root_id) == before_root, "the card behind it must stay put"
 
 
-def test_a_title_bar_press_on_a_frozen_child_moves_nothing(window: MainWindow) -> None:
-    """A frozen child consumes its own title-bar press, so the card behind it stays put."""
-    document = window.session.document
-    assert document is not None
-    root_id = document.tree.root_ids[0]
-    before_root = _box(window, root_id)
-    before_child = _box(window, _id(window, "B"))
-    _drag_card(window, "B", offset_y=10.0)
-    assert _box(window, root_id) == before_root
-    assert _box(window, _id(window, "B")) == before_child

@@ -228,40 +228,5 @@ def hug_all(tree: CardTree, layouts: MutableMapping[CardId, CardLayout]) -> bool
     return moved
 
 
-def hug_children(
-    tree: CardTree, layouts: MutableMapping[CardId, CardLayout], parent: CardId
-) -> bool:
-    """End the box where its lowest attached child ends (T-041); True when it moved.
-
-    The rule the user asked for while arranging cards inside a parent: the parent's bottom edge
-    always coincides with the lowest child's bottom edge, so lifting a child closes the gap up
-    and the box grows again when one is pushed down -- both carried up the ancestor chain.
-    A folded parent keeps its small box (its children are hidden) and a parent with no attached
-    child is left alone; free cards are part of no flow, so they cannot hug anything.
-    """
-    box = layouts.get(parent)
-    if box is None or box.collapsed:
-        return False
-    children = _siblings(tree, layouts, parent)
-    if not children:
-        return False
-    bottom = max(layouts[card_id].y + layouts[card_id].height for card_id in children)
-    needed = bottom - (box.y + box.height)
-    if needed == 0.0:
-        return False
-    box.height = max(box.height + needed, 0.0)
-    propagate_height(tree, layouts, parent, needed)
-    return True
 
 
-def hug_all(tree: CardTree, layouts: MutableMapping[CardId, CardLayout]) -> bool:
-    """Apply :func:`hug_children` to every parent; True when anything moved (T-041).
-
-    Used after a structural operation and when a document is opened or refreshed, so a stored
-    arrangement that carries a gap heals as soon as it is loaded.
-    """
-    moved = False
-    for card_id in tree.ordered_ids():
-        if hug_children(tree, layouts, card_id):
-            moved = True
-    return moved
