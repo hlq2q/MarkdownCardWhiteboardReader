@@ -122,8 +122,9 @@ class _Placer:
             # follow the header bar directly, which tightens every such level (T-058).
             body = 0.0
         own_height = header + body + (2 * self._options.padding if body > 0.0 else 0.0)
+        placeable = self.children_to_place(card)
         children_height = self._place_children(
-            self.children_to_place(card),
+            placeable,
             x=x + self._options.indent,
             y=y + own_height + self._options.gap,
             width=max(box_width - 2 * self._options.indent, _MIN_INNER_WIDTH),
