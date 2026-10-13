@@ -160,6 +160,23 @@ class CardItem(QGraphicsObject):
         self._document.setTextWidth(self.body_rect().width())
         return self._document.size().height()
 
+    def body_insets(self) -> tuple[float, float, float, float]:
+        """Distance from the card's edge to the body element: left, right, top, bottom (T-053).
+
+        Read-only view for tests. The four numbers have to agree for code, table and
+        rendered-image cards, otherwise the element does not sit evenly inside its card.
+        """
+        layout = self._document.documentLayout()
+        first = layout.blockBoundingRect(self._document.firstBlock())
+        last = layout.blockBoundingRect(self._document.lastBlock())
+        body = self.body_rect()
+        return (
+            body.left() + first.x(),
+            self._width - (body.left() + first.x() + first.width()),
+            body.top() - HEADER_HEIGHT + first.y(),
+            self._height - (body.top() + last.bottom()),
+        )
+
     # Bodies of these kinds are a rendered image, not the document: no height to measure (T-049).
     _IMAGE_KINDS = frozenset({CardKind.MATH_BLOCK, CardKind.MERMAID, CardKind.IMAGE})
 
@@ -205,11 +222,19 @@ class CardItem(QGraphicsObject):
         return self._palette
 
     def body_rect(self) -> QRectF:
+        """The area the body is drawn in, inset equally on all four sides (T-053).
+
+        It used to start right under the header bar: measured against a code card, the element's
+        distance to the card edge was 10 px left and right (PADDING + the document's own margin) but
+        4 px above and 16 px below. Inset by PADDING at the top as well, and the document's 4 px
+        margin then lands on the same 10 px on every side -- while the height still equals the
+        measured body exactly (header + body + 2 * PADDING is what the layout reserves).
+        """
         return QRectF(
             PADDING,
-            HEADER_HEIGHT,
+            HEADER_HEIGHT + PADDING,
             max(self._width - 2 * PADDING, 1.0),
-            max(self._height - HEADER_HEIGHT - PADDING, 1.0),
+            max(self._height - HEADER_HEIGHT - 2 * PADDING, 1.0),
         )
 
     # ------------------------------------------------------------------- painting
