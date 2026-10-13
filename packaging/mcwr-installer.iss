@@ -61,6 +61,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir={#OutputDirName}
+; The icon comes from the repository assets (relative to THIS script, like SourceDir above):
+; the frozen exe embeds the same file, so the shortcut and the setup both show it.
+SetupIconFile=..\src\mcwr\assets\mcwr.ico
 OutputBaseFilename=mcwr-setup-{#AppVersion}
 ; The bundle is ~580 MB of Qt/WebEngine binaries; a versioned output name keeps every build.
 #ifdef FAST

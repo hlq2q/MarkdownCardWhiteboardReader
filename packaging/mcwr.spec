@@ -74,7 +74,7 @@ exe = EXE(  # noqa: F821
     strip=False,
     upx=False,
     console=False,  # GUI subsystem: never flash a console window (pitfall §13.15)
-    icon=None,
+    icon=str(ASSETS / "mcwr.ico"),  # the app icon, also shipped as an asset for the window
 )
 
 coll = COLLECT(  # noqa: F821
