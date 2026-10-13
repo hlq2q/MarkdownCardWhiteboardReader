@@ -105,7 +105,7 @@ def test_a_right_click_on_the_title_bar_finds_the_card(window: MainWindow) -> No
 
     The lookup used ``QGraphicsView.itemAt``, which Qt skips for a point in a title bar, so the
     card's own menu section disappeared -- and the title bar is exactly where a user right-clicks a
-    card. This asserts the lookup itself rather than popping the modal menu, which no test can close.
+    card. This asserts the lookup itself, not the modal menu that no test can close.
     """
     point = _title_bar_point(window, "G").toPoint()
 
