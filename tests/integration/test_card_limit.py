@@ -42,7 +42,8 @@ class RecordingRenderer:
 def _write_document(path: Path, *, headings: int) -> Path:
     """A document with exactly ``headings + 2`` cards.
 
-    One card per heading, one math and one mermaid card (no wrapper card exists any more). The tests
+    One card per heading plus one math and one mermaid card -- they nest under the last heading, but
+    they are still cards of their own. No wrapper card exists any more. The tests
     assert the resulting count, so a change in the card rules fails loudly instead of
     silently testing the wrong side of the boundary.
     """
@@ -161,7 +162,7 @@ def test_a_document_over_the_limit_degrades_and_stays_interactive(tmp_path: Path
 
 def test_the_degraded_math_card_draws_its_source_text(tmp_path: Path) -> None:
     """D-029 says "show the source", so the card must really paint it, not go blank."""
-    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 2)
+    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 1)
     window = MainWindow(persist=False, renderer=RecordingRenderer())  # type: ignore[arg-type]
     assert window.open_path(document) is True
 
@@ -172,7 +173,7 @@ def test_the_degraded_math_card_draws_its_source_text(tmp_path: Path) -> None:
 
 def test_an_over_limit_document_can_still_be_refreshed(tmp_path: Path) -> None:
     """The degraded mode survives a refresh instead of flipping back to the heavy path."""
-    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 2)
+    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 1)
     renderer = RecordingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]
     assert window.open_path(document) is True

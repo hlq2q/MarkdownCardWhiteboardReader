@@ -192,13 +192,18 @@ class CardItem(QGraphicsObject):
         self._dragging = True
         self.update()
 
-    def end_view_drag(self) -> None:
-        """Finish a view-driven drag: clear the drag state and report the position (E-027)."""
+    def end_view_drag(self, *, silent: bool = False) -> None:
+        """Finish a view-driven drag: clear the drag state and report the position (E-027).
+
+        ``silent`` skips the report: a group drag reports once for the whole selection, because
+        letting every card report in turn makes the window re-apply the geometry between them and
+        the cards that have not reported yet snap back to their stale layout.
+        """
         self._dragging = False
         self.update()
         moved = self._press_position is None or self._press_position != self.scenePos()
         self._press_position = None
-        if moved:
+        if moved and not silent:
             position = self.scenePos()
             self.moved.emit(self, position.x(), position.y())
 

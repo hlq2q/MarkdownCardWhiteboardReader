@@ -227,6 +227,8 @@ class BoardView(QGraphicsView):
             pressed = self.top_card_at(scene_point)
             if pressed is not None and pressed in selected and len(selected) > 1:
                 # Pressing inside the selection moves all of it (D-052).
+                for item in selected:
+                    item.begin_view_drag(item.scenePos())
                 self._group_drag = (
                     selected,
                     event.position(),
@@ -287,8 +289,11 @@ class BoardView(QGraphicsView):
         for item in scene.items():
             if not isinstance(item, CardItem) or not item.sceneBoundingRect().contains(scene_point):
                 continue
-            if found is None or item.zValue() >= found.zValue():
-                found = item
+            if found is None or (item.zValue(), -item.sceneBoundingRect().width()) > (
+                found.zValue(),
+                -found.sceneBoundingRect().width(),
+            ):
+                found = item  # same depth: the innermost (smallest) card is the one being grabbed
         return found
 
     def copy_selection(self) -> bool:
@@ -378,6 +383,27 @@ class BoardView(QGraphicsView):
             return
         super().keyPressEvent(event)
 
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        """Ctrl + right double-click gives a scaled card its natural size back (T-057).
+
+        That gesture owns the right button, so the context menu stays away for it; any other double
+        click still centres the card under the cursor.
+        """
+        if event.button() == Qt.MouseButton.RightButton and (
+            event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        ):
+            card = self.top_card_at(self.mapToScene(event.position().toPoint()))
+            self._menu_suppressed = True
+            if card is not None:
+                self.scale_reset_requested.emit(card.card.card_id)
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+        item = self.itemAt(event.position().toPoint())
+        if item is not None:
+            self.centerOn(QPointF(item.scenePos()))
+            self.card_activated.emit(item)
+
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """Finish the gesture the press started."""
         if self._text_drag and event.button() == Qt.MouseButton.LeftButton:
@@ -387,9 +413,13 @@ class BoardView(QGraphicsView):
         if self._group_drag is not None and event.button() == Qt.MouseButton.LeftButton:
             items, origin, positions = self._group_drag
             self._group_drag = None
-            # The items already moved live and each one recorded its own position, so this asks the
-            # session to snap the *group* as one (a zero delta is a snap-only request, D-052).
-            self.cards_moved.emit([item.card.card_id for item in items], 0.0, 0.0)
+            scale = self.transform().m11() or 1.0
+            delta = (event.position() - origin) / scale
+            for item in items:
+                item.end_view_drag(silent=True)
+            # One report for the whole selection: the session moves every layout at once and snaps
+            # the group as a whole (edges first, then the grid, D-052).
+            self.cards_moved.emit([item.card.card_id for item in items], delta.x(), delta.y())
             event.accept()
             return
         if self._marquee_origin is not None and event.button() == Qt.MouseButton.RightButton:
