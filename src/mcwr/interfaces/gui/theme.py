@@ -21,7 +21,8 @@ from mcwr.domain.enums import CardKind
 PT_PER_PX: Final[float] = 0.75
 """Qt sizes are points (1/72 inch), the spec's sizes are CSS pixels: 1 px = 0.75 pt."""
 
-GRID_STEP: Final[float] = 40.0
+GRID_STEP: Final[float] = 34.0
+"""Grid pitch: one title bar, so the lines land on the header edges (T-061)."""
 GRID_ALPHA: Final[int] = 102
 """The spec's grid is ``divider`` at 40% opacity: round(0.40 * 255)."""
 

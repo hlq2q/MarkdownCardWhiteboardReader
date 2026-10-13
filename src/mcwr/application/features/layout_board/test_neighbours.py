@@ -11,12 +11,12 @@ MOVING = (200.0, 300.0, 100.0, 50.0)
 
 def test_nothing_nearby_falls_back_to_the_grid() -> None:
     """No neighbour at all: the 40 px grid still applies (D-051)."""
-    dx, dy = snap_delta(MOVING, [])
+    dx, dy = snap_delta(MOVING, [], step=40.0)
     assert dx == 0.0
     assert dy == 0.0
 
     near_line = (203.0, 308.0, 100.0, 50.0)
-    dx, dy = snap_delta(near_line, [])
+    dx, dy = snap_delta(near_line, [], step=40.0)
     assert dx == -3.0  # 203 is 3 px past the 200 line
     assert dy == 12.0  # 308 is exactly the tolerance below the 320 line
 
@@ -32,8 +32,8 @@ def test_an_edge_within_the_tolerance_is_pulled_onto_the_neighbour() -> None:
 
 def test_an_edge_further_than_the_tolerance_keeps_its_place() -> None:
     neighbour = (300.0, 500.0, 120.0, 50.0)  # right edge at 420
-    box = (460.0, 300.0, 100.0, 50.0)  # 40 px from that edge and 20 px from any grid line
-    dx, dy = snap_delta(box, [neighbour])
+    box = (460.0, 300.0, 100.0, 50.0)  # 40 px from that edge and 20 px from any 40 px line
+    dx, dy = snap_delta(box, [neighbour], step=40.0)
     assert dx == 0.0
     assert dy == 0.0
 
@@ -50,7 +50,7 @@ def test_each_axis_is_decided_on_its_own() -> None:
     """Close horizontally, far vertically: only x moves."""
     neighbour = (300.0, 900.0, 130.0, 50.0)
     box = (425.0, 300.0, 100.0, 50.0)
-    dx, dy = snap_delta(box, [neighbour])
+    dx, dy = snap_delta(box, [neighbour], step=40.0)
     assert dx == 5.0  # left edge onto the neighbour's right edge at 430
     assert dy == 0.0  # 300 is on the grid and no neighbour edge is near
 
@@ -73,4 +73,4 @@ def test_the_tolerance_and_step_can_be_overridden() -> None:
 
 
 def test_the_default_step_is_the_painted_grid() -> None:
-    assert GRID_STEP == 40.0
+    assert GRID_STEP == 34.0  # one title bar (T-061)
