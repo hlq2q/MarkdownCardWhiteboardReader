@@ -7,14 +7,16 @@ from typing import Final
 from PySide6.QtCore import QLineF, QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
-    QContextMenuEvent,
+    QGuiApplication,
+    QKeyEvent,
+    QKeySequence,
     QMouseEvent,
     QPainter,
     QPen,
     QTransform,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QRubberBand, QWidget
 
 from mcwr.domain.models import Viewport
 from mcwr.interfaces.gui.card_item import CardItem
@@ -102,6 +104,8 @@ class BoardView(QGraphicsView):
 
     zoom_changed = Signal(float)
     card_activated = Signal(object)
+    cards_moved = Signal(list, float, float)
+    """Emitted when a drag ends: the card ids plus the scene delta (T-051)."""
 
     def __init__(self, scene: BoardScene, parent: QWidget | None = None) -> None:
         super().__init__(scene, parent)
@@ -119,7 +123,12 @@ class BoardView(QGraphicsView):
         self._view_drag: tuple[CardItem, QPointF, QPointF] | None = None
         self._marquee_selection = False
         self._marquee_dragged = False
+        self._marquee_origin: QPointF | None = None
+        self._marquee_band = QRubberBand(QRubberBand.Shape.Rectangle, self.viewport())
+        self._group_drag: tuple[list[CardItem], QPointF, list[QPointF]] | None = None
         self._menu_suppressed = False
+        self._text_item: CardItem | None = None
+        self._text_drag = False
 
     # ----------------------------------------------------------------------- zoom
 
@@ -179,45 +188,72 @@ class BoardView(QGraphicsView):
         super().wheelEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """The middle button starts a 1:1 pan, and a movable card is grabbed anywhere on it.
+        """Start whichever gesture the press belongs to: pan, marquee, group move, text, or drag.
 
-        Qt's own ``ScrollHandDrag`` pans only while the *left* button is held, so the earlier
-        middle-button branch — which merely switched the drag mode and the cursor — moved nothing
-        at all. The press is consumed here: panning must neither select nor move a card, and the
-        left button keeps its rubber-band selection untouched.
-
-        Card presses are checked here because Qt's delivery skips a card when its *title bar* is
-        pressed and hands the press to whatever is behind it (measured, E-027), which used to drag
-        the whole section card instead of the card that was grabbed. A movable card under the
-        cursor is therefore driven by the view when the scene did not grab it, and a frozen card
-        under the cursor consumes the press itself (title bars have no links, so nothing is lost).
+        Qt's own delivery skips a card when its *title bar* is pressed and hands the press to
+        whatever is behind it (measured, E-027), so the title bar is taken over here. A press in the
+        body belongs to the card's text (T-063): dragging selects, Ctrl+C copies, and a card is
+        moved by its title bar.
         """
+        if event.button() == Qt.MouseButton.RightButton:
+            # The right button starts a marquee; the menu stays away while it is up (D-052).
+            self._marquee_origin = event.position()
+            self._marquee_dragged = False
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._marquee_selection = False  # a plain left press ends the marquee state
+            self._menu_suppressed = False
+            scene_point = self.mapToScene(event.position().toPoint())
+            selected = [
+                item
+                for item in (self.scene().selectedItems() if self.scene() is not None else [])
+                if isinstance(item, CardItem) and item.is_movable
+            ]
+            pressed = self.top_card_at(scene_point)
+            if pressed is not None and pressed in selected and len(selected) > 1:
+                # Pressing inside the selection moves all of it (D-052).
+                self._group_drag = (
+                    selected,
+                    event.position(),
+                    [item.scenePos() for item in selected],
+                )
+                event.accept()
+                return
+            if pressed is not None and not pressed.is_in_header(scene_point):
+                if pressed.anchor_at_scene(scene_point):
+                    super().mousePressEvent(event)  # a link keeps the document's own handling
+                    return
+                if self._begin_text_selection(pressed, scene_point):
+                    event.accept()
+                    return
+            if pressed is not None and pressed.is_in_header(scene_point):
+                self._take_over_press(pressed, event)
+                return
         if event.button() == Qt.MouseButton.MiddleButton:
             self._panning = True
             self._pan_origin = event.position()
             self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
             return
+        super().mousePressEvent(event)
         scene = self.scene()
         card = self.item_at(event.position().toPoint())
-        if (
-            card is not None
-            and not card.is_movable
-            and card.is_in_header(self.mapToScene(event.position().toPoint()))
-        ):
-            scene.clearSelection()
-            card.setSelected(True)
-            event.accept()
-            return
-        super().mousePressEvent(event)
         if card is None or not card.is_movable or scene is None:
             return
         if scene.mouseGrabberItem() is card:
             return  # Qt grabbed it: its own drag (and its own release handler) is in charge
-        scene.clearSelection()
+        self._take_over_press(card, event)
+
+    def _take_over_press(self, card: CardItem, event: QMouseEvent) -> None:
+        """Select ``card`` and drag it here; the card behind it must not move (E-027)."""
+        scene = self.scene()
+        if scene is not None:
+            scene.clearSelection()
         card.setSelected(True)
-        card.begin_view_drag(card.scenePos())
-        self._view_drag = (card, event.position(), card.scenePos())
+        if card.is_movable:
+            card.begin_view_drag(card.scenePos())
+            self._view_drag = (card, event.position(), card.scenePos())
         event.accept()
 
     def item_at(self, point: QPoint) -> CardItem | None:
@@ -225,12 +261,56 @@ class BoardView(QGraphicsView):
         item = self.itemAt(point)
         return item if isinstance(item, CardItem) else None
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Move the viewport with the cursor while the middle button is held (T-037).
+    def top_card_at(self, scene_point: QPointF) -> CardItem | None:
+        """The topmost card at ``scene_point`` -- frozen or movable (E-027/T-051)."""
+        return self.item_at(self.mapFromScene(scene_point))
 
-        Only the integer part of the motion is applied and the remainder stays in the origin,
-        so the view never drifts away from the cursor across a long drag.
-        """
+    def copy_selection(self) -> bool:
+        """Copy the card's text selection to the clipboard; False when there is none (T-063)."""
+        if self._text_item is None or not self._text_item.has_selection():
+            return False
+        QGuiApplication.clipboard().setText(self._text_item.selected_text())
+        return True
+
+    def _begin_text_selection(self, card: CardItem, scene_point: QPointF) -> bool:
+        """Give the press to the card's text instead of moving the card (T-063)."""
+        if self._text_item is not None and self._text_item is not card:
+            self._text_item.clear_selection()
+        self._text_item = None
+        if not card.start_selection(scene_point):
+            return False
+        self._text_item = card
+        self._text_drag = True
+        return True
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Drive the active gesture, or pan the viewport with the middle button (T-037)."""
+        if not event.buttons():
+            self._update_cursor(event.position())
+        if self._text_drag and event.buttons() & Qt.MouseButton.LeftButton:
+            if self._text_item is not None:
+                self._text_item.extend_selection(self.mapToScene(event.position().toPoint()))
+            event.accept()
+            return
+        if self._group_drag is not None:
+            items, origin, positions = self._group_drag
+            scale = self.transform().m11() or 1.0  # the board only ever scales, never rotates
+            delta = (event.position() - origin) / scale
+            for item, start in zip(items, positions, strict=True):
+                item.setPos(start + delta)
+            event.accept()
+            return
+        if self._marquee_origin is not None and event.buttons() & Qt.MouseButton.RightButton:
+            delta = event.position() - self._marquee_origin
+            if not self._marquee_dragged and (abs(delta.x()) > 4.0 or abs(delta.y()) > 4.0):
+                self._marquee_dragged = True
+                self._marquee_band.show()
+            if self._marquee_dragged:
+                self._marquee_band.setGeometry(
+                    QRect(self._marquee_origin.toPoint(), event.position().toPoint()).normalized()
+                )
+                event.accept()
+                return
         if self._view_drag is not None:
             card, origin, card_origin = self._view_drag
             scale = self.transform().m11() or 1.0  # the board only ever scales, never rotates
@@ -251,11 +331,58 @@ class BoardView(QGraphicsView):
             bar.setValue(bar.value() - int(amount))
         event.accept()
 
+    def _update_cursor(self, position: QPointF) -> None:
+        """Show an I-beam over card text, the arrow anywhere else (T-065)."""
+        scene_point = self.mapToScene(position.toPoint())
+        card = self.top_card_at(scene_point)
+        over_text = (
+            card is not None
+            and not card.is_in_header(scene_point)
+            and card.has_text_at(scene_point)
+        )
+        if over_text:
+            self.viewport().setCursor(Qt.CursorShape.IBeamCursor)
+        else:
+            self.viewport().unsetCursor()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Ctrl+C copies the card's text selection (T-063)."""
+        if event.matches(QKeySequence.StandardKey.Copy) and self.copy_selection():
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Finish the gesture the press started."""
+        if self._text_drag and event.button() == Qt.MouseButton.LeftButton:
+            self._text_drag = False  # the drag ends, the selection stays (T-063)
+            event.accept()
+            return
+        if self._group_drag is not None and event.button() == Qt.MouseButton.LeftButton:
+            items, origin, positions = self._group_drag
+            self._group_drag = None
+            delta = (event.position() - origin) / (self.transform().m11() or 1.0)
+            if delta.x() or delta.y():
+                # The window snaps the group's drop (edges first, then the grid, D-052).
+                self.cards_moved.emit([item.card.card_id for item in items], delta.x(), delta.y())
+            event.accept()
+            return
+        if self._marquee_origin is not None and event.button() == Qt.MouseButton.RightButton:
+            self._marquee_origin = None
+            self._marquee_band.hide()
+            if self._marquee_dragged:
+                self._select_in_band()
+            self._marquee_dragged = False
+            event.accept()
+            return
         if self._view_drag is not None and event.button() == Qt.MouseButton.LeftButton:
-            card, _, _ = self._view_drag
+            card, origin, card_origin = self._view_drag
             self._view_drag = None
             card.end_view_drag()
+            if card.is_movable:
+                moved = card.scenePos() - card_origin
+                if moved.x() or moved.y():
+                    self.cards_moved.emit([card.card.card_id], moved.x(), moved.y())
             event.accept()
             return
         if self._panning and event.button() == Qt.MouseButton.MiddleButton:
@@ -264,21 +391,6 @@ class BoardView(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-
-    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """Ctrl + right button belongs to the size-reset gesture, so it never opens a menu (T-057).
-
-        Windows asks for the context menu when the right button goes *up* -- i.e. after the first
-        click of a double-click. Without this the menu opened there and swallowed the second click,
-        which is why the reset gesture never reached the view at all.
-        """
-        if self.vetoes_context_menu(event.modifiers()):
-            event.accept()
-            return
-        # This is what CustomContextMenu would have done for us; doing it here is what makes the
-        # veto below possible at all.
-        self.customContextMenuRequested.emit(event.pos())
-        event.accept()
 
     def suppresses_context_menu(self) -> bool:
         """True while a marquee selection is up, so it never opens the card menu (D-052)."""
@@ -294,12 +406,21 @@ class BoardView(QGraphicsView):
             return True
         return self.suppresses_context_menu()
 
-    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        super().mouseDoubleClickEvent(event)
-        item = self.itemAt(event.position().toPoint())
-        if item is not None:
-            self.centerOn(QPointF(item.scenePos()))
-            self.card_activated.emit(item)
+    def _select_in_band(self) -> None:
+        """Select every *detached* card the marquee band touches (D-052: frozen children stay out)."""
+        scene = self.scene()
+        if scene is None:
+            return
+        band = self.mapToScene(self._marquee_band.geometry()).boundingRect()
+        scene.clearSelection()
+        picked = 0
+        for item in scene.items():
+            if not isinstance(item, CardItem) or not item.layout_state.detached:
+                continue  # D-052: only a card the user pulled out joins a marquee selection
+            if item.sceneBoundingRect().intersects(band):
+                item.setSelected(True)
+                picked += 1
+        self._marquee_selection = picked > 0
 
 
 def _clamp(scale: float) -> float:

@@ -16,9 +16,11 @@ from collections.abc import Mapping
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
+    QAbstractTextDocumentLayout,
     QBrush,
     QColor,
     QFont,
+    QGuiApplication,
     QPainter,
     QPainterPath,
     QPen,
@@ -104,6 +106,7 @@ class CardItem(QGraphicsObject):
         self._palette = palette
         self._toc = toc
         self._depth = max(depth, 0)
+        self._cursor: QTextCursor | None = None
         self._document = _build_document(card, blocks, palette, toc)
         self._image = image
         self._pending = False
@@ -219,6 +222,95 @@ class CardItem(QGraphicsObject):
     def visual_palette(self) -> Palette:
         """The palette this item currently paints with (read-only view for tests)."""
         return self._palette
+
+    # ----------------------------------------------------------------- text selection (T-063)
+
+    def has_selection(self) -> bool:
+        """Whether this card currently shows a text selection."""
+        return self._cursor is not None and self._cursor.hasSelection()
+
+    def selected_text(self) -> str:
+        """The selected text, with Qt's paragraph separators turned into newlines."""
+        if self._cursor is None:
+            return ""
+        return self._cursor.selectedText().replace("\u2029", "\n")
+
+    def clear_selection(self) -> None:
+        """Drop the selection (a press on another card does this); repaints if there was one."""
+        if self._cursor is None:
+            return
+        self._cursor = None
+        self.update()
+
+    def start_selection(self, scene_point: QPointF) -> bool:
+        """Begin a selection where ``scene_point`` falls in the body; False for an image body."""
+        position = self._text_position(scene_point)
+        if position is None:
+            return False
+        self._cursor = QTextCursor(self._document)
+        self._cursor.setPosition(position)
+        self.update()
+        return True
+
+    def extend_selection(self, scene_point: QPointF) -> None:
+        """Grow the selection towards ``scene_point``; the anchor stays where the drag began."""
+        if self._cursor is None:
+            return
+        position = self._text_position(scene_point)
+        if position is None:
+            return
+        self._cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor)
+        self.update()
+
+    def has_text_at(self, scene_point: QPointF) -> bool:
+        """Whether a scene point sits on this card's text (the I-beam area, T-065)."""
+        return self._text_position(scene_point) is not None
+
+    def anchor_at_scene(self, scene_point: QPointF) -> str:
+        """The href of the link under a *scene* point, or an empty string (FR-2.4, T-063)."""
+        body = self.body_rect()
+        local = self.mapFromScene(scene_point)
+        if not body.contains(local):
+            return ""
+        return self._document.documentLayout().anchorAt(local - body.topLeft())
+
+    def _text_position(self, scene_point: QPointF) -> int | None:
+        """The document position under a scene point, clamped into the body; None for an image."""
+        if self.has_image:
+            return None  # an image body is not text
+        body = self.body_rect()
+        local = self.mapFromScene(scene_point)
+        inside = (
+            QPointF(
+                min(max(local.x(), body.left()), body.right()),
+                min(max(local.y(), body.top()), body.bottom()),
+            )
+            - body.topLeft()
+        )
+        return self._document.documentLayout().hitTest(inside, Qt.HitTestAccuracy.FuzzyHit)
+
+    def _draw_body_text(self, painter: QPainter) -> None:
+        """Draw the body text, highlighting the selection when there is one (T-063).
+
+        Without a selection this stays the plain ``drawContents`` path, so the everyday look is
+        untouched; a selection needs an explicit paint context, the only way to hand the cursor to
+        the layout.
+        """
+        rect = QRectF(0, 0, self.body_rect().width(), 1e6)
+        if not self.has_selection():
+            self._document.drawContents(painter, rect)
+            return
+        assert self._cursor is not None
+        context = QAbstractTextDocumentLayout.PaintContext()
+        context.clip = rect
+        context.palette = QGuiApplication.palette()  # the same palette drawContents() would use
+        selection = QAbstractTextDocumentLayout.Selection()
+        selection.cursor = self._cursor
+        highlight = QColor(self._palette.selected)
+        highlight.setAlpha(90)
+        selection.format.setBackground(QBrush(highlight))
+        context.selections = [selection]
+        self._document.documentLayout().draw(painter, context)
 
     def body_rect(self) -> QRectF:
         """The area the body is drawn in, inset equally on all four sides (T-053).
@@ -347,7 +439,7 @@ class CardItem(QGraphicsObject):
                 painter.translate(self.body_rect().topLeft())
                 painter.setPen(QPen(QColor(palette.text_primary)))
                 self._document.setTextWidth(self.body_rect().width())
-                self._document.drawContents(painter, QRectF(0, 0, self.body_rect().width(), 1e6))
+                self._draw_body_text(painter)
             painter.restore()
 
         # Selection is a thicker border *and* another colour, never colour alone (§6).
