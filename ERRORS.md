@@ -332,3 +332,32 @@
 - 修复（T-066）：`propagate_height` 只在**重排根未被拖出**（仍在父卡流内）时执行；自由卡的尺寸变化只影响它自己与它的子树。判据就是布局里的 `detached`，不引入新状态。
 - 验证：探针 A 稳定 62、Z 的 y 不变（82）、刷新前后一致；新增 `tests/integration/test_detach_free_card.py` 2 项（沿链拖出不动祖先、刷新无事可修）。
 - 关联：T-036/T-041（高度传播与收紧）、E-031（保留位置与重排内容成对）、T-064（缩放口径）
+
+## E-035 恢复后右键两处回归：卡片菜单段消失、右键双击把视图滚走（fixed，2026-10-13）
+
+- **现象**：①右键卡片时菜单里"卡片那一组"（拖出为自由卡片 / 还原到父卡片 / 折叠…）消失，严重时整个菜单不出现；
+  ②右键点卡片后卡片"不明原因向窗口右边缘对齐"。
+- **根因**：会话重放恢复时丢了 T-062 的**窗口侧一半** —— 视图策略已是 `DefaultContextMenu`，而窗口仍挂着
+  T-062 之前的 `customContextMenuRequested.connect(self._show_context_menu)`（此策略下该信号**永不触发**），
+  且窗口没有 `contextMenuEvent` 覆写，右键事件无人接收；另外菜单定位卡片原本用 `QGraphicsView.itemAt`，
+  而 Qt **在标题栏区域会跳过该卡**（见 E-027）。症状②是 `mouseDoubleClickEvent` 对**任意键**都调了
+  `centerOn()`，Windows 上右键连点会走双击分支 ⇒ 视图被滚动。
+- **修复**：补 `MainWindow.contextMenuEvent`（**窗口坐标 → 视口坐标**换算；视口因左侧大纲面板而偏移）；
+  菜单改用视图自己的"矩形 + z 序"命中测试（抽出可测接缝 `_card_at`）；删除死连接；
+  模态 `menu.exec` 抽成 `_exec_menu` 接缝；右键双击不再触碰视图，普通右键按下清除残留的菜单否决位。
+- **验证**：`tests/integration/test_context_menu.py` 3 项（含**发真实 `QContextMenuEvent`（窗口坐标）**的用例）
+  + 用户实测两个症状均恢复。旧测试只断言 `suppresses_context_menu()` 标志位且传入视口坐标，
+  **绕过了事件路径**，因此"测试全绿而应用是坏的"。
+- **防止复发**：改右键/菜单行为后，测试必须走**真实事件 + 真实坐标空间**；涉及坐标换算时显式写方向
+  （`mapToScene` = 视口→场景，`mapFromScene` = 场景→视口），并用探针打印两侧取值对拍。
+
+## E-036 目录改名后 uv 启动器失效，`mypy`/`pytest` 静默不执行 ⇒ 假绿（fixed，2026-10-13）
+
+- **现象**：工程从 `…-recovered` 改名到正式路径后，`uv run mypy src` / `uv run pytest` 输出
+  `error: uv trampoline failed to canonicalize script path`；而用 `grep -c FAILED` 统计得到"0 项失败"的**假绿**。
+- **根因**：Windows 下 uv 生成的启动器（trampoline）**内嵌创建时的绝对路径**；`.venv` 随目录改名后
+  `Scripts\*.exe` 指向的旧路径不存在。`uv sync` 只改正了可编辑安装（`file://` 指向），启动器仍需重建。
+- **修复**：`rm -rf .venv && uv sync` 重建（纯生成物，秒级）。
+- **验证**：重建后三关正常输出，`pytest -q` **退出码 0** 且 `[100%]` 无 FAILED。
+- **防止复发**：目录改名/移动后**先重建 `.venv`**；判定测试结果一律用**退出码或汇总行**，
+  **禁止用 `grep -c FAILED` 计数**（命令没跑起来或输出被截断都会得到 0）。通用规则归 `pitfall-playbook` §13。

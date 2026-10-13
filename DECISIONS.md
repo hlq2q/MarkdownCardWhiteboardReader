@@ -577,3 +577,18 @@
 - 关联任务：T-064；历史：T-057、E-033、E-029（测量闭环）
 - 补充（E-034/T-066）：**自由卡不参与祖先的排布流**——重排根若已 `detached`，其高度变化**不得**沿祖先链传播（否则祖先会被拉塌，表现为"原位置留空行、刷新才恢复"）。这条与 D-050（附着子卡冻结、自由卡浮动）同源。
 
+## D-061 丢失工程的恢复方式：会话重放 + 保留被删目录的真实历史（accepted，2026-10-13）
+
+- **背景**：10-13 用户用 HiBitUninstaller 卸载安装版并执行"残余扫描"，该工具按**名字**匹配，把源码目录与
+  `%APPDATA%\MarkdownCardWhiteboardReader` 一并删除。安装脚本本身**没有** `[UninstallDelete]` 节，其 `{app}`
+  只是 `%LOCALAPPDATA%\Programs\MarkdownCardWhiteboardReader`（见 `packaging/mcwr-installer.iss`），
+  因此删除并非安装器所为。
+- **决策**：以 DSH 会话记录（39 份 JSONL、566 步可重放操作）重放恢复源码与测试，重放产物构成新的提交历史；
+  被删目录的**真实 git 历史**（31 提交、HEAD `a7e5336`）与 19 处未提交改动，分别以
+  `mcwr-recovery/original-git-T030/` 与 `mcwr-recovery/original-19-uncommitted.patch` 保留在工程之外。
+- **理由**：会话记录包含每个文件的**完整内容**，是唯一能还原到最新状态的信息源；真实历史只有 31 个提交且不含
+  丢失时段的工作，保留它是为了考古，以及将来 `git fetch` 对照。
+- **影响**：现工程历史为 53 个提交（重放 + 修复），**与原始历史不共享祖先**；如需对照可用
+  `git remote add t030 <上述目录>` + `git fetch t030`（只取不合并）。今后卸载/安装前必须把
+  `C:\Users\31094\Projects` 加入 HiBit 忽略列表。
+- **关联**：T-067 / T-068；E-035；E-036。
