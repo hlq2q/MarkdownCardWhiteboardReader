@@ -1,6 +1,6 @@
 """Snap a card's position onto the whiteboard grid (T-048).
 
-The board paints a 40 px grid (``theme.GRID_STEP``): a free card dropped near one of its lines is
+The board paints a grid one title bar tall (34 px, ``theme.GRID_STEP``): a card dropped near a line
 pulled onto it, so a board can be arranged on a tidy lattice without pixel hunting. The two axes are
 decided on their own -- a drop that is close in x and far in y moves in x only, which is what a user
 expects from a per-axis guide.
@@ -8,8 +8,8 @@ expects from a per-axis guide.
 
 from __future__ import annotations
 
-GRID_STEP: float = 40.0
-"""Grid pitch in scene units; equals the painted grid (``theme.GRID_STEP``), pinned by a test."""
+GRID_STEP: float = 34.0
+"""Grid pitch in scene units (one title bar); the painted grid and a test must agree (T-061)."""
 
 SNAP_TOLERANCE: float = 12.0
 """How close a coordinate has to be to a grid line before it is pulled onto it."""
