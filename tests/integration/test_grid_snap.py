@@ -127,8 +127,10 @@ def test_a_drop_near_a_line_lands_on_it_and_leaves_the_other_axis(window: MainWi
     window.session.detach(card_id)
     _settle()
     start = window.session.layouts[card_id]
-    line = math.floor(start.x / GRID_STEP) * GRID_STEP + GRID_STEP
-    target_x = line + 5.0  # inside the 12 px tolerance: x snaps
+    # Two lines away from the card itself and 8 px above the line: no neighbour edge is within
+    # reach there, so the grid is what settles x (an edge would win otherwise, D-052).
+    line = math.floor(start.x / GRID_STEP) * GRID_STEP + 2 * GRID_STEP
+    target_x = line + 8.0
     target_y = math.floor((start.y + 200.0) / GRID_STEP) * GRID_STEP + 20.0  # 20 px off: y stays
     _drag_body_to(window, card_id, (target_x, target_y))
     layout = window.session.layouts[card_id]

@@ -20,20 +20,20 @@ SignaturePart = int | None
 class StructureSignature:
     """The structure of a card tree, reduced to the criterion of decision D11.
 
-    ``big_sections`` counts the big-section cards (the roots) and ``heading_levels``
+    ``top_cards`` counts the big-section cards (the roots) and ``heading_levels``
     lists the level of every heading card in document order; ``part_count`` counts the
     big sections plus the headings, so two signatures can never collide by accident
     (``(1, (2,))`` and ``(2, ())`` describe different trees).
     """
 
-    big_sections: int
+    top_cards: int
     heading_levels: tuple[int, ...]
     part_count: int
 
     @property
     def parts(self) -> tuple[SignaturePart, ...]:
         """The signature as one comparable sequence: big sections first, then levels."""
-        return (self.big_sections, *self.heading_levels)
+        return (self.top_cards, *self.heading_levels)
 
 
 @dataclass(frozen=True, slots=True)

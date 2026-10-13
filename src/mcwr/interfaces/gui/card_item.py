@@ -521,6 +521,9 @@ def _build_document(
     # Code blocks and links must stay readable on the dark fill, where the markdown
     # importer's own light colours would otherwise paint dark-on-dark.
     document.setDefaultStyleSheet(_stylesheet(palette))
+    # One source of padding only (T-054): Qt's default 4 px document margin would otherwise add
+    # to PADDING and make the element sit 10 px from the edges instead of the intended 6.
+    document.setDocumentMargin(0.0)
 
     code = _own_code_block(card, blocks)
     if code is not None:

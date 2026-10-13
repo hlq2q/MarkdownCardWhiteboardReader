@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from mcwr.application.features.layout_board.ports import SizeEstimator
+from mcwr.domain.enums import BlockKind
 from mcwr.domain.models import Block, Card, CardId, CardLayout, CardTree
 
 _MIN_INNER_WIDTH = 80.0
@@ -27,11 +28,22 @@ class LinearLayoutOptions:
     """
 
     section_width: float = 960.0
-    indent: float = 24.0
+    # T-060: halved from 24, so a child card sits 12 px inside its parent on the left *and* the
+    # right (the child's width is the box minus two indents).
+    indent: float = 12.0
     gap: float = 8.0
     padding: float = 6.0
     header_height: float = 34.0
     min_height: float = 56.0
+
+
+def _has_own_body(card: Card, blocks: Mapping[int, Block]) -> bool:
+    """Whether a card's own blocks render into its body (a heading lives in the header)."""
+    return any(
+        block.kind is not BlockKind.HEADING
+        for index in card.own_block_indexes
+        if (block := blocks.get(index)) is not None
+    )
 
 
 class _Placer:
@@ -75,11 +87,12 @@ class _Placer:
         card = self._tree.cards[card_id]
         inner_width = max(width - 2 * self._options.padding, _MIN_INNER_WIDTH)
         header = 0.0 if card.is_big_section else self._options.header_height
-        own_height = (
-            header
-            + self._estimator.estimate_height(card, blocks=self._blocks, width=inner_width)
-            + 2 * self._options.padding
-        )
+        body = self._estimator.estimate_height(card, blocks=self._blocks, width=inner_width)
+        if card.child_ids and not _has_own_body(card, self._blocks):
+            # A heading with nothing but child cards under it needs no empty body line: the children
+            # follow the header bar directly, which tightens every such level (T-058).
+            body = 0.0
+        own_height = header + body + (2 * self._options.padding if body > 0.0 else 0.0)
         children_height = self._place_children(
             self.children_to_place(card),
             x=x + self._options.indent,
@@ -129,6 +142,18 @@ def layout_board(
     for root_id in tree.root_ids:
         height = placer.place(root_id, x=0.0, y=cursor, width=resolved.section_width, depth=0)
         cursor += height + resolved.gap
+    # A free card is not part of anybody's flow, so the walk above skipped it. Place it as the tree
+    # it is, at the position the user left it in (T-057 adds the scale, which must not be applied
+    # twice: the stored width already carries it).
+    for card_id, state in (states or {}).items():
+        if card_id in tree.cards and card_id not in placer.layouts and state.detached:
+            placer.place(
+                card_id,
+                x=state.x,
+                y=state.y,
+                width=state.width / (state.scale or 1.0),
+                depth=state.z,
+            )
     return placer.layouts
 
 

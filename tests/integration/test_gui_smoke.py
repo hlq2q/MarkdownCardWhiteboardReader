@@ -164,7 +164,7 @@ def test_a_major_structural_change_rebuilds_the_board(window: MainWindow, tmp_pa
 
     document = window.session.document
     assert document is not None
-    assert len(document.tree.root_ids) == 3
+    assert len(document.tree.root_ids) == 2, "the sample's H1 plus the appended one"
     assert window.session.layouts[code].x != 5000.0, "a major change rebuilds the arrangement"
     assert "重建" in window.statusBar().currentMessage()
 

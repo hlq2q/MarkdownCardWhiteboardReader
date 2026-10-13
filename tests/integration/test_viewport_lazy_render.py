@@ -118,7 +118,9 @@ def test_zooming_in_renders_only_the_cards_near_the_viewport(tmp_path: Path) -> 
 
     assert renderer.calls, "the cards around the viewport must be rendered"
     assert set(renderer.calls) == _rendered_keys(window), "exactly the queued neighbourhood"
-    assert len(renderer.calls) <= 12, f"only the neighbourhood: {len(renderer.calls)} calls"
+    # The bound is geometry-dependent: T-058 tightened heading-only parents, so a few more
+    # cards fit the viewport. It must stay far below the document's card count.
+    assert len(renderer.calls) <= 16, f"only the neighbourhood: {len(renderer.calls)} calls"
     assert _source_of(window, rich[-1]) not in renderer.calls, (
         "a card a board away must not be rasterized"
     )

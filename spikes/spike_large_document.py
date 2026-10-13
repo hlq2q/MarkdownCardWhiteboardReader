@@ -298,7 +298,7 @@ def run_document(path: Path, *, render: bool) -> dict[str, object]:
         def render(self, *, kind: object, source: str, scale: float, theme: str = "light"):
             del kind, source, scale, theme
             self.calls += 1
-            return None
+            return
 
     renderer = CountingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]

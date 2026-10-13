@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from mcwr.domain.enums import CardKind
+from mcwr.application.features.layout_board.service import LinearLayoutOptions
+from mcwr.domain.enums import BlockKind
 from mcwr.interfaces.gui.main_window import MainWindow
 from mcwr.interfaces.gui.theme import HEADER_HEIGHT, PADDING
 
@@ -62,6 +63,10 @@ child body
 
 child body
 """
+
+
+# The gap between sibling cards, which a heading-only parent leaves as its whole spacing (T-058).
+SIBLING_GAP = LinearLayoutOptions().gap
 
 
 class StubRenderer:
@@ -123,26 +128,40 @@ def test_no_measured_body_is_clipped(window: MainWindow) -> None:
         assert measured <= item.card_height - HEADER_HEIGHT - 2 * PADDING + 0.5, title
 
 
-def test_every_parent_leaves_the_same_gap_to_its_first_child(window: MainWindow) -> None:
-    """A heading card's own text and a table card's rows both end the same distance above the child.
+def test_a_parents_first_child_keeps_the_documented_distance(window: MainWindow) -> None:
+    """T-058: a heading-only parent leaves just the sibling gap, one with text keeps the padding.
 
-    The gap used to be 56 px under ``# Parent card`` and 36 px elsewhere, because that card counted
-    its own heading as a body line. The synthetic big-section card is excluded: it has no body of
-    its own, so its child starts right under the header by design.
+    The gap is measured from the parent's body bottom, so a card whose own block is only its heading
+    (its body measures ~0) must start its first child within the 8 px sibling gap, while a card that
+    carries text keeps the usual bottom padding and stays under 44 px.
     """
     document = window.session.document
     assert document is not None
-    gaps: list[float] = []
+    checked = 0
     for card_id, card in document.tree.cards.items():
         item = window.card_items.get(card_id)
-        if item is None or not card.child_ids or card.kind is CardKind.BIG_SECTION:
+        if item is None or not card.child_ids:
             continue
         measured = item.measured_body_height()
         if measured is None:
             continue
         body_bottom = item.scenePos().y() + HEADER_HEIGHT + measured
-        gaps.append(window.session.layouts[card.child_ids[0]].y - body_bottom)
-    assert len(gaps) >= 2
-    assert max(gaps) - min(gaps) == pytest.approx(0.0, abs=1.0)
-    # body bottom -> first child = bottom padding (12) + the document's trailing leading + gap (16)
-    assert max(gaps) <= 44.0
+        gap = window.session.layouts[card.child_ids[0]].y - body_bottom
+        blocks = window.session.blocks
+        has_body = any(
+            blocks[index].kind is not BlockKind.HEADING
+            for index in card.own_block_indexes
+            if index in blocks
+        )
+        if has_body:
+            assert 0.0 <= gap <= 44.0, (card.title, measured, gap)
+        else:
+            # The layout gives such a parent no body at all, so its first child sits one sibling gap
+            # below the header. An empty document still *measures* a line, hence the 8 - measured.
+            assert gap == pytest.approx(SIBLING_GAP - measured, abs=1.0), (
+                card.title,
+                measured,
+                gap,
+            )
+        checked += 1
+    assert checked >= 2

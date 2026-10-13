@@ -524,3 +524,14 @@
 - 影响：`main_window` 增 `OUTLINE_SHORTCUT`、`_outline_collapse`、`_outline_action`、`_build_outline_panel`、`_toggle_outline`、`_on_outline_visibility_changed`、`_apply_window_palette` 增 `QToolButton#outlineCollapse` 规则；`WindowState` **不变**。测试：`test_outline_panel.py` 增 2 项 + 2 处样式断言。
 - 关联任务：T-032 T-020
 
+
+## D-057 标题下没有正文时不留空行：自有高度只算标题栏，子卡紧跟其后
+
+- 日期：2026-10-12
+- 背景：用户提出"如果标题下方没有文本,只有子方块,可以不要留空行,这样能使布局更紧凑"。
+- 决定：**卡自身没有正文块（自有块只有自己的标题，或为空）且带子卡时**，自有高度 = 标题栏高度（34 px），**不计那一行空正文、也不计上下内边距**；子卡从 `标题栏 + 兄弟间距(8 px)` 开始。卡自身有正文时公式不变（`标题栏 + 正文 + 2×内边距`），无子卡的空标题卡也保持原来的一行高度（否则会比 GUI 的最小高度还矮）。
+- 效果：这类父卡的自有高度 46 → **34 px**，每层省 12 px；单测夹具里父卡 274 → **222**、祖父卡 368 → **264**（实测）。
+- 判定口径：`layout_board/service.py::_has_own_body()` = 自有块里存在非标题块；与 T-049 的"标题画在标题栏里"是同一条口径。
+- 附带发现：空 `QTextDocument` 仍**测量**出一行（约 16 px），但布局按 0 计 —— 因此"正文底边"到首个子卡的距离是 `8 − measured`（可为负）；测试用这条精确关系断言，而不用"间距必须为正"。
+- 影响：`layout_board/service.py`（`_Place` 的自有高度 + 新助手）、`test_stack.py` 的两个高度常量、`test_card_heights.py` 的间距用例改为"有正文 ≤44 px / 无正文 = 8 − measured"、`test_viewport_lazy_render.py` 的懒渲染预算 12 → 16（版面更紧凑，视野内卡片变多）。
+- 关联任务：T-058

@@ -53,8 +53,8 @@ def test_acceptance_2_dividers_and_headings_nest_correctly(window: MainWindow) -
     assert document is not None
     tree = document.tree
     roots = [tree.cards[root] for root in tree.root_ids]
-    assert all(card.kind is CardKind.BIG_SECTION for card in roots)
-    assert len(roots) == 2, "one divider splits the sample into two big sections"
+    assert all(card.kind is CardKind.HEADING for card in roots), "the top-level headings are roots"
+    assert len(roots) == 1, "the sample has one H1, and the divider adds no card (T-055)"
 
     task_list = card_id_of(window, "tasks")
     parent = tree.cards[tree.cards[task_list].parent_id or ""]
@@ -153,7 +153,7 @@ def test_acceptance_6_refresh_keeps_layout_unless_the_structure_changes(
     document = window.session.document
     assert document is not None
     titles = [document.tree.cards[root].title for root in document.tree.root_ids]
-    assert len(titles) == 3, "the divider created a third big section"
+    assert len(titles) == 1, "a divider adds no card, and the added ## nests (T-055)"
 
 
 def test_acceptance_6b_changing_a_heading_level_is_a_major_change(
