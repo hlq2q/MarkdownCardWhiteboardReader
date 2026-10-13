@@ -1,7 +1,7 @@
 """T-028 acceptance: the left depth stripe, checked on painted pixels.
 
-The document below nests four headings under one big section, so a single board exercises
-every tier: the big section is depth 0 (tier 1), ``Top`` depth 1, ``Second`` depth 2,
+The document below nests four headings below one top-level heading, so a single board exercises
+every tier: ``Top`` is depth 0 (tier 1), ``Second`` depth 1, ``Third`` depth 2,
 ``Third`` depth 3 (tier 4) and ``Fourth`` depth 4 — which must reuse tier 4, not invent a
 fifth colour.
 """

@@ -120,7 +120,6 @@ def test_follow_the_system_resolves_both_ways() -> None:
 
 def test_card_fill_follows_the_spec_per_kind() -> None:
     for palette in PALETTES.values():
-        assert card_fill(palette, CardKind.BIG_SECTION) == palette.big_card_bg
         assert card_fill(palette, CardKind.HEADING) == palette.heading_card_bg
         assert card_fill(palette, CardKind.CODE) == palette.code_bg
         assert card_fill(palette, CardKind.IMAGE) == palette.code_bg

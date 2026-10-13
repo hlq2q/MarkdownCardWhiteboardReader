@@ -184,8 +184,6 @@ def frame_cost(window, steps: int) -> tuple[float, float, float]:
     return statistics.median(small), statistics.median(full), statistics.median(zooms)
 
 
-
-
 def visible_item_count(window) -> int:
     """How many scene items the viewport actually paints (Qt's own culling answer)."""
     view = window.view
@@ -207,8 +205,6 @@ def repaint_only_cost(window, steps: int = 10) -> float:
         view.viewport().repaint()
         timings.append((time.perf_counter() - started) * 1000.0)
     return statistics.median(timings)
-
-
 
 
 def drag_cost(window, steps: int) -> float:

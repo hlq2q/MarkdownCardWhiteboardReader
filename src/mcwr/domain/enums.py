@@ -5,7 +5,7 @@ decides what the parse pipeline does with it (spec FR-1.2 / FR-1.3):
 
 * ``CARD``     -> becomes its own card
 * ``CONTENT``  -> rendered inside its owning card, never a card itself
-* ``DIVIDER``  -> structural only (splits big sections, never rendered)
+* ``DIVIDER``  -> structural only (separates, never a card, never rendered)
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ class BlockKind(StrEnum):
 class CardKind(StrEnum):
     """Kind of a card shown on the whiteboard."""
 
-    BIG_SECTION = "big_section"
     HEADING = "heading"
     IMAGE = "image"
     CODE = "code"

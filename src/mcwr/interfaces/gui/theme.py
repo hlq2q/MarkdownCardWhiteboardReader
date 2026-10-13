@@ -213,9 +213,7 @@ def system_is_dark() -> bool:
 
 
 def card_fill(palette: Palette, kind: CardKind) -> str:
-    """The fill of one card kind (spec §1: big section, heading, code/image, table, rest)."""
-    if kind is CardKind.BIG_SECTION:
-        return palette.big_card_bg
+    """The fill of one card kind (spec §1: heading, code/image, table, rest)."""
     if kind is CardKind.HEADING:
         return palette.heading_card_bg
     if kind is CardKind.CODE or kind is CardKind.IMAGE:

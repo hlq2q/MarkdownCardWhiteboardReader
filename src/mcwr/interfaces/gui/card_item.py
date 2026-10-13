@@ -65,7 +65,6 @@ from mcwr.interfaces.gui.theme import (
 )
 
 KIND_GLYPH: dict[CardKind, str] = {
-    CardKind.BIG_SECTION: "§",
     CardKind.HEADING: "H",
     CardKind.CODE: "</>",
     CardKind.TABLE: "▦",

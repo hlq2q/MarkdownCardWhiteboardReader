@@ -11,7 +11,7 @@ from mcwr.domain.models import Block, CardTree
 def required_block_indexes(blocks: Iterable[Block]) -> frozenset[int]:
     """Indexes that must be owned by some card.
 
-    Thematic breaks are structural only (they split big sections and are never
+    Thematic breaks are structural only (they separate and are never
     rendered), so they are legitimately owned by nobody; everything else — including
     paragraphs, quotes and plain lists — must survive inside a card (FR-1.3).
     """

@@ -55,32 +55,30 @@ def titled(tree: CardTree, title: str) -> Card:
     return matches[0]
 
 
-def test_document_without_dividers_is_a_single_big_section() -> None:
+def test_a_top_level_heading_is_a_root() -> None:
+    """There is no wrapper card: the H1 itself is a root and owns what follows it (T-055)."""
     tree = build([heading(0, "Intro", 1), para(1, "hello")])
     assert len(tree.root_ids) == 1
     root = tree.cards[tree.root_ids[0]]
-    assert root.kind is CardKind.BIG_SECTION
-    assert root.title == "Section 1"
-    assert root.own_block_indexes == ()
+    assert root.kind is CardKind.HEADING
+    assert root.title == "Intro"
+    assert root.own_block_indexes == (0, 1)
 
 
-def test_dividers_split_the_document_into_big_sections() -> None:
+def test_a_divider_separates_without_making_a_card() -> None:
     blocks = [heading(0, "A", 1), divider(1), heading(2, "B", 1), divider(3), heading(4, "C", 1)]
     tree = build(blocks)
-    assert [tree.cards[root].kind for root in tree.root_ids] == [CardKind.BIG_SECTION] * 3
-    assert [tree.cards[root].title for root in tree.root_ids] == [
-        "Section 1",
-        "Section 2",
-        "Section 3",
-    ]
+    assert [tree.cards[root].kind for root in tree.root_ids] == [CardKind.HEADING] * 3
+    assert [tree.cards[root].title for root in tree.root_ids] == ["A", "B", "C"]
 
 
-def test_consecutive_and_edge_dividers_never_create_empty_sections() -> None:
+def test_consecutive_and_edge_dividers_never_create_a_card() -> None:
     blocks = [divider(0), para(1, "a"), divider(2), divider(3), para(4, "b"), divider(5)]
     tree = build(blocks)
-    assert len(tree.root_ids) == 2
-    for root in tree.root_ids:
-        assert tree.cards[root].own_block_indexes, "empty big sections must not exist"
+    assert len(tree.root_ids) == 1, "the loose paragraphs form one card of their own"
+    root = tree.cards[tree.root_ids[0]]
+    assert root.kind is CardKind.FALLBACK_TEXT
+    assert root.own_block_indexes == (1, 4)
 
 
 def test_headings_nest_by_level() -> None:
@@ -122,13 +120,15 @@ def test_content_blocks_belong_to_the_nearest_heading() -> None:
     assert titled(tree, "B").own_block_indexes == (2, 3)
 
 
-def test_card_blocks_without_a_heading_belong_to_the_big_section() -> None:
+def test_card_blocks_without_a_heading_become_their_own_root() -> None:
+    """Nothing wraps them any more: loose text is a card, and the code block is a root too."""
     blocks = [para(0, "lead in"), blk(1, BlockKind.CODE, "print(1)", lang="python")]
     tree = build(blocks)
-    section = tree.cards[tree.root_ids[0]]
-    assert section.own_block_indexes == (0,)
+    loose = tree.cards[tree.root_ids[0]]
+    assert loose.kind is CardKind.FALLBACK_TEXT
+    assert loose.own_block_indexes == (0,)
     code = titled(tree, "python")
-    assert code.parent_id == section.card_id
+    assert code.parent_id is None
     assert code.kind is CardKind.CODE
     assert code.own_block_indexes == (1,)
 

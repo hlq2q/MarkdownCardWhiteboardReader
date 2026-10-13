@@ -42,7 +42,7 @@ class RecordingRenderer:
 def _write_document(path: Path, *, headings: int) -> Path:
     """A document with exactly ``1 + headings + 2`` cards.
 
-    1 implicit big section, one card per heading, one math and one mermaid card. The tests
+    one card per heading, one math and one mermaid card. The tests
     assert the resulting count, so a change in the card rules fails loudly instead of
     silently testing the wrong side of the boundary.
     """

@@ -100,10 +100,6 @@ class Card:
     block_index: int | None = None
     level: int | None = None
 
-    @property
-    def is_big_section(self) -> bool:
-        return self.kind is CardKind.BIG_SECTION
-
 
 @dataclass(frozen=True, slots=True)
 class CardTree:

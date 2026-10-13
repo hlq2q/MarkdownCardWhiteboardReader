@@ -263,7 +263,7 @@ class BoardSession(QObject):
         """Re-read and re-parse the file on demand, structure first (FR-5, D11).
 
         Cards matched by their stable key keep their geometry, collapse and free-card
-        state; a major structural change (big section count or heading level sequence)
+        state; a major structural change (top-level card count or heading level sequence)
         rebuilds the board instead, with a warning naming the reason.
         """
         if self._document is None:
