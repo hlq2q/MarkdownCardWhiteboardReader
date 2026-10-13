@@ -56,6 +56,7 @@ def test_every_card_is_placed_at_its_domain_coordinates(window: MainWindow) -> N
 def test_drag_records_the_new_position(window: MainWindow) -> None:
     window.open_path(SAMPLE)
     code = card_id_of(window, "python")
+    window.session.detach(code)  # only a free card accepts a drag (T-043)
     item = window.card_items[code]
     item.setPos(item.pos().x() + 120.0, item.pos().y() + 60.0)
     item.moved.emit(item, item.scenePos().x(), item.scenePos().y())
@@ -129,6 +130,9 @@ def test_refresh_keeps_positions_and_adds_new_cards(window: MainWindow, tmp_path
     shutil.copyfile(SAMPLE, document_copy)
     assert window.open_path(document_copy) is True
     code = card_id_of(window, "python")
+    # A card inside its parent cannot be moved (T-043/D-050), so mark an arrangement the app can
+    # really produce: detach the card first, then place it (T-049 re-packs attached cards).
+    window.session.detach(code)
     window.session.layouts[code].move_to(4242.0, 2424.0)
     cards_before = len(window.session.document.tree.cards)  # type: ignore[union-attr]
 
@@ -200,11 +204,14 @@ def test_a_new_session_does_not_share_the_previous_layout(tmp_path: Path) -> Non
     first = MainWindow(persist=False, store=store, session_id="session-a", window_uuid="w1")
     first.open_path(document_copy)
     code = card_id_of(first, "python")
+    # Only a card the user can move carries a personal arrangement (T-043/T-049): detach first.
+    first.session.detach(code)
     first.session.layouts[code].move_to(999.0, 999.0)
     first.session.persist()
 
     second = MainWindow(persist=False, store=store, session_id="session-b", window_uuid="w2")
     second.open_path(document_copy)
+    second.session.detach(code)
     second.session.layouts[code].move_to(1.0, 2.0)
     second.session.persist()
 

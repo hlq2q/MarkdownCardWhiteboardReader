@@ -137,6 +137,9 @@ def test_acceptance_6_refresh_keeps_layout_unless_the_structure_changes(
 ) -> None:
     document_path = open_sample(window, tmp_path)
     code = card_id_of(window, "python")
+    # A card inside its parent cannot be moved (T-043/D-050): an arrangement the app can really
+    # produce needs a movable card, so detach it before placing it.
+    window.session.detach(code)
     window.session.layouts[code].move_to(700.0, 900.0)
 
     with document_path.open("a", encoding="utf-8") as handle:
@@ -199,6 +202,9 @@ def test_acceptance_8_a_restart_restores_the_stored_layout(tmp_path: Path) -> No
     first = MainWindow(persist=False, store=store, session_id="s", window_uuid="w")
     first.open_path(document_path)
     code = card_id_of(first, "python")
+    # Attached cards are re-packed by the measured-height pass (T-049) and cannot be moved by the
+    # user (T-043), so the arrangement that must survive a restart belongs to a movable card.
+    first.session.detach(code)
     first.session.layouts[code].move_to(321.0, 654.0)
     assert first.session.persist() is True
 

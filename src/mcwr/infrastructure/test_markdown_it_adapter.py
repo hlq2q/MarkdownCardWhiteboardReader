@@ -74,9 +74,7 @@ def test_math_block_and_inline_math() -> None:
     _, by_index = parse_sample()
     math = [block for block in by_index.values() if block.kind is BlockKind.MATH_BLOCK]
     assert math[0].text_normalized == "E = mc^2"
-    inline_kinds = {
-        span.kind for block in by_index.values() for span in block.inline
-    }
+    inline_kinds = {span.kind for block in by_index.values() for span in block.inline}
     assert "math" in inline_kinds
 
 

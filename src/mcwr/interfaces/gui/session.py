@@ -31,6 +31,13 @@ from mcwr.application.features.layout_board.service import (
     layout_board,
     relayout_subtree,
 )
+from mcwr.application.features.layout_board.grid import snap_to_grid
+from mcwr.application.features.layout_board.stack import (
+    hug_all,
+    move_subtree,
+    propagate_height,
+    resolve_overlaps,
+)
 from mcwr.application.features.load_document.models import LoadedDocument
 from mcwr.application.features.persist_layout.ports import LayoutStore
 from mcwr.application.features.persist_layout.service import persist_snapshot, restore_snapshot
@@ -48,6 +55,7 @@ from mcwr.domain.models import (
     WindowState,
 )
 from mcwr.infrastructure.heuristic_sizer import HeuristicSizeEstimator
+from mcwr.infrastructure.measured_sizer import MeasuredHeightEstimator
 
 
 def limit_notice(card_count: int) -> str:
@@ -79,6 +87,9 @@ class BoardSession(QObject):
     ) -> None:
         super().__init__(parent)
         self._estimator: SizeEstimator = estimator or HeuristicSizeEstimator()
+        # Body heights measured from the real documents, keyed by card id (T-049). Card ids follow
+        # the content, so a stale entry can only ever belong to a card that renders the same way.
+        self._measured: dict[CardId, float] = {}
         self._options = options or LinearLayoutOptions()
         self._store = store
         self._session_id = session_id or uuid.uuid4().hex
@@ -221,12 +232,32 @@ class BoardSession(QObject):
         self.status.emit("all cards restored to the initial arrangement")
         return change
 
-    def move_card(self, card_id: CardId, x: float, y: float) -> None:
-        """Record a finished drag (whiteboard coordinates)."""
+    def move_card(self, card_id: CardId, x: float, y: float, *, snap: bool = False) -> None:
+        """Record a finished drag of a card that is allowed to move (T-043, D-050).
+
+        A card inside its parent keeps its position relative to that parent — the user's rule is
+        that it is frozen and only travels when the parent does — so a new position is accepted
+        only for free cards and for parentless (top-level) cards. Everything attached below the
+        moved card follows by the same delta, which keeps the stored geometry equal to what the
+        view shows, now and after a reload.
+
+        ``snap`` pulls the position onto the whiteboard grid first (T-048, D-051): each axis moves
+        only when the drop is close enough to a line, so a deliberate off-grid spot is kept.
+        """
         layout = self._layouts.get(card_id)
-        if layout is None:
+        tree = self._tree()
+        card = tree.cards.get(card_id)
+        if layout is None or card is None:
             return
+        if card.parent_id is not None and not layout.detached:
+            return
+        if snap:
+            x, y = snap_to_grid(x, y)
+        delta_x, delta_y = x - layout.x, y - layout.y
         layout.move_to(x, y)
+        for child in card.child_ids:
+            move_subtree(tree, self._layouts, child, delta_x, delta_y)
+        self.cards_changed.emit(tuple(self._layouts))
 
     def refresh(self) -> bool:
         """Re-read and re-parse the file on demand, structure first (FR-5, D11).
@@ -325,37 +356,90 @@ class BoardSession(QObject):
             self._relayout_from(card_id)
         return change
 
-    def _apply_layouts(self, previous: Mapping[CardId, CardLayout]) -> int:
-        """Lay the board out fresh, then overlay stored geometry; returns new-card count."""
+    def adopt_measured_heights(self, measured: Mapping[CardId, float]) -> None:
+        """Lay the board out again with the body heights the cards really rendered (T-049).
+
+        The text estimator can only guess -- it does not know that a fenced block's ``` lines are
+        not body lines, or how tall a rendered table row is -- and ``CardItem.paint`` clips the body
+        to the card's height, so a guess that is too small hides rows and one that is too large
+        leaves padding. The view measures its documents and calls this; positions, collapsed and
+        detached state survive, every manually sized card keeps its size, and the column is packed
+        again around the real heights.
+        """
+        if not measured or not self._layouts:
+            return
+        self._measured = dict(measured)
+        self._apply_layouts(self._layouts, keep_sizes=False)
+        self.cards_changed.emit(tuple(self._layouts))
+
+    def _layout_estimator(self) -> SizeEstimator:
+        """The heights the cards really rendered when the view has measured them (T-049).
+
+        Every layout path goes through here -- a fresh layout, a structural re-stack, "restore all"
+        -- because falling back to the raw text estimate after the first measurement would hand back
+        the phantom padding and the clipped table that the measurement just removed.
+        """
+        if not self._measured:
+            return self._estimator
+        return MeasuredHeightEstimator(self._estimator, self._measured)
+
+    def _apply_layouts(
+        self, previous: Mapping[CardId, CardLayout], *, keep_sizes: bool = True
+    ) -> int:
+        """Lay the board out fresh, then overlay stored geometry; returns new-card count.
+
+        With ``keep_sizes=False`` the stored *sizes* give way to the fresh ones, which is what the
+        measured-height pass needs. Such a pass also re-packs the attached cards instead of pinning
+        them to their stored y: a card inside its parent cannot be moved by the user, so its
+        position is layout output rather than user state -- and pinning it while its parent's own
+        height grew left the column a few pixels short of the tight stacking (E-029). Only what the
+        user can actually move -- a parentless card, or one already detached -- keeps its position.
+        """
         tree = self._tree()
         fresh = layout_board(
-            tree, blocks=self.blocks, estimator=self._estimator, options=self._options
+            tree, blocks=self.blocks, estimator=self._layout_estimator(), options=self._options
         )
         new_ids = [card_id for card_id in fresh if card_id not in previous]
         for card_id, layout in previous.items():
             target = fresh.get(card_id)
-            if target is None:
+            card = tree.cards.get(card_id)
+            if target is None or card is None:
                 continue
             if layout.width <= 0.0 and layout.height <= 0.0:
                 continue  # a placeholder (e.g. a brand-new card) keeps its fresh position
-            target.x, target.y = layout.x, layout.y
-            target.width, target.height = layout.width, layout.height
+            if keep_sizes or card.parent_id is None or layout.detached:
+                target.x, target.y = layout.x, layout.y
             target.collapsed = layout.collapsed
             target.detached = layout.detached
             target.manual_size = layout.manual_size
+            if keep_sizes or layout.manual_size:
+                target.width, target.height = layout.width, layout.height
         self._layouts = fresh
+        # A stored arrangement can carry overlaps (an older snapshot, a manual drag that was
+        # never followed by a structural change), and opening/refreshing is the moment the
+        # user expects the stacking to be sane again (T-036, D-045).
+        resolve_overlaps(tree, self._layouts, all_parents=True, options=self._options)
+        hug_all(tree, self._layouts)
         for parent in {tree.cards[card_id].parent_id for card_id in new_ids}:
             if parent is not None and parent in self._layouts:
                 self._relayout_from(parent)
         return len(new_ids)
 
     def _relayout_from(self, card_id: CardId) -> None:
-        """Re-stack the parent of ``card_id`` (or the card itself) after a change."""
+        """Re-stack the parent of ``card_id`` (or the card itself) after a change.
+
+        Three follow-ups keep the column tight (T-036/T-041, D-045/D-048): the height change is
+        carried up the ancestor chain, so no hole is left inside a grandparent and the cards
+        after it follow; every parent is swept for overlapping siblings; and every box is pulled
+        onto its lowest attached child — a structural operation is exactly the moment at which
+        the user wants the stacking restored.
+        """
         tree = self._tree()
         card = tree.cards.get(card_id)
         root = card.parent_id if card is not None and card.parent_id else card_id
         if root not in self._layouts:
             return
+        before = self._layouts[root].height
         self._layouts = relayout_subtree(
             tree,
             self._layouts,
@@ -364,4 +448,7 @@ class BoardSession(QObject):
             estimator=self._estimator,
             options=self._options,
         )
+        propagate_height(tree, self._layouts, root, self._layouts[root].height - before)
+        resolve_overlaps(tree, self._layouts, all_parents=True, options=self._options)
+        hug_all(tree, self._layouts)
         self.cards_changed.emit(tuple(self._layouts))

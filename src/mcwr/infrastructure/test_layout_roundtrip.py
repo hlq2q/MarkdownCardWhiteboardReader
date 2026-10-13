@@ -113,9 +113,17 @@ def test_layout_key_and_card_id_must_agree(tmp_path: Path) -> None:
     payload = read_json(path)
     layouts = payload["layouts"]
     assert isinstance(layouts, dict)
-    layouts["card-1"] = {"card_id": "someone-else", "x": 1.0, "y": 1.0, "width": 1.0,
-                         "height": 1.0, "z": 0, "collapsed": False, "detached": False,
-                         "manual_size": False}
+    layouts["card-1"] = {
+        "card_id": "someone-else",
+        "x": 1.0,
+        "y": 1.0,
+        "width": 1.0,
+        "height": 1.0,
+        "z": 0,
+        "collapsed": False,
+        "detached": False,
+        "manual_size": False,
+    }
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(LayoutCorruptedError) as caught:

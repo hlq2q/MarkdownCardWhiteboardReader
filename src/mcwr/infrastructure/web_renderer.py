@@ -350,8 +350,7 @@ class QtWebCardRenderer:
         """
         tag = _KIND_TAGS.get(kind, kind.value)
         material = (
-            f"{kind.value}\x00{source}\x00{self.bucket_for(scale):.4f}"
-            f"\x00{_normalize_theme(theme)}"
+            f"{kind.value}\x00{source}\x00{self.bucket_for(scale):.4f}\x00{_normalize_theme(theme)}"
         )
         digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:_DIGEST_CHARS]
         return self.cache_dir / f"{_CACHE_PREFIX}{tag}-{digest}.png"
@@ -414,9 +413,7 @@ class QtWebCardRenderer:
             image = self._rasterize(size=size, scale=self._scale_that_fits(size, bucket))
             self.stats["retried"] += 1
         if image is None:
-            return self._fail(
-                f"render failed after {attempts} attempt(s): {self._last_reason}"
-            )
+            return self._fail(f"render failed after {attempts} attempt(s): {self._last_reason}")
         return self._store(image, path)
 
     def _scale_that_fits(self, size: tuple[int, int], bucket: float) -> float:

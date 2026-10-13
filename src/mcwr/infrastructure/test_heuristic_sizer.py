@@ -57,6 +57,20 @@ def test_missing_block_indexes_are_ignored() -> None:
     assert sizer.estimate_height(card(CardKind.FALLBACK_TEXT, (99,)), blocks={}, width=400) > 0
 
 
+def test_the_cards_own_heading_is_not_a_body_line() -> None:
+    """The header bar draws the title, so the heading block must not add a body line (E-029).
+
+    Counting it made every heading card one line too tall, which is what pushed a gap between a
+    parent card's text and its first child (measured 56 px where 36 px was intended).
+    """
+    sizer = HeuristicSizeEstimator()
+    heading = Block(index=0, kind=BlockKind.HEADING, raw_text="# Title", text_normalized="# Title")
+    blocks: Mapping[int, Block] = {0: heading, 1: block(1, "body")}
+    with_heading = sizer.estimate_height(card(CardKind.HEADING, (0, 1)), blocks=blocks, width=400)
+    without_heading = sizer.estimate_height(card(CardKind.HEADING, (1,)), blocks=blocks, width=400)
+    assert with_heading == without_heading
+
+
 def test_rich_card_kinds_get_extra_room() -> None:
     sizer = HeuristicSizeEstimator()
     blocks: Mapping[int, Block] = {0: block(0, "same text")}

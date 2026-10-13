@@ -35,9 +35,7 @@ def card_text(card: Card, blocks: Mapping[int, Block]) -> str:
     return text
 
 
-def search_cards(
-    tree: CardTree, blocks: Mapping[int, Block], query: str
-) -> tuple[SearchHit, ...]:
+def search_cards(tree: CardTree, blocks: Mapping[int, Block], query: str) -> tuple[SearchHit, ...]:
     """Cards whose own text contains ``query``, in document order.
 
     An empty query matches nothing (the caller decides what to say about that); a query that

@@ -47,7 +47,11 @@ def sample_tree() -> CardTree:
         blk(0, BlockKind.HEADING, "Intro", level=1),
         blk(1, BlockKind.PARAGRAPH, "some text"),
         blk(2, BlockKind.HEADING, "Deep", level=2),
-        blk(3, BlockKind.CODE, "print(1)", ),
+        blk(
+            3,
+            BlockKind.CODE,
+            "print(1)",
+        ),
         blk(4, BlockKind.THEMATIC_BREAK, "---"),
         blk(5, BlockKind.HEADING, "Second", level=1),
     ]

@@ -121,8 +121,7 @@ def merge_layouts(
             :func:`match_cards`).
     """
     layouts: dict[CardId, CardLayout] = {
-        new_id: _merge_one(old_layouts, old_id, new_id)
-        for old_id, new_id in mapping.kept.items()
+        new_id: _merge_one(old_layouts, old_id, new_id) for old_id, new_id in mapping.kept.items()
     }
     for new_id in mapping.added:
         layouts[new_id] = CardLayout(card_id=new_id)
@@ -144,9 +143,7 @@ def _merge_one(
     return CardLayout(card_id=new_id) if old is None else _restore_geometry(old, new_id)
 
 
-def _merge_notes(
-    old_layouts: Mapping[CardId, CardLayout], mapping: CardMapping
-) -> tuple[str, ...]:
+def _merge_notes(old_layouts: Mapping[CardId, CardLayout], mapping: CardMapping) -> tuple[str, ...]:
     """Human-readable notes for one merge: new, removed and unpositioned cards."""
     notes: list[str] = []
     if mapping.added:
@@ -195,8 +192,7 @@ def major_change_warnings(old_tree: CardTree, new_tree: CardTree) -> tuple[str, 
     reasons: list[str] = []
     if old.big_sections != new.big_sections:
         reasons.append(
-            f"the number of big sections changed from {old.big_sections} to "
-            f"{new.big_sections}"
+            f"the number of big sections changed from {old.big_sections} to {new.big_sections}"
         )
     if old.heading_levels != new.heading_levels:
         reasons.append(
@@ -254,9 +250,7 @@ def _plan_relocations(
     return tuple(matched)
 
 
-def _candidate_rank(
-    old: Card, new: Card, order: Mapping[CardId, int]
-) -> tuple[int, int, int, str]:
+def _candidate_rank(old: Card, new: Card, order: Mapping[CardId, int]) -> tuple[int, int, int, str]:
     """Order candidates: closest heading path, then closest document position, then id.
 
     The heading-path distance counts the names that differ plus the depth difference, so

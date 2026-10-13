@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Final, cast
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
@@ -63,6 +63,13 @@ MAX_LIVE_PIXMAPS: Final[int] = 256
 
 OUTLINE_SHORTCUT: Final[str] = "Ctrl+B"
 """Collapse/expand the outline sidebar (T-032); the panel also carries a "收起" button."""
+
+OVERLAY_MARGIN: Final[int] = 18
+"""Gap between the floating buttons and the bottom-right corner of the board (T-035, D-044).
+
+Deliberately wider than the scroll bar's 14 px ``sizeHint``, so the strip never sits on
+top of it; the user picked this value and visual-spec §4 records it.
+"""
 
 THEME_CHOICES: tuple[tuple[ThemeMode, str], ...] = (
     (ThemeMode.SYSTEM, "跟随系统"),
@@ -135,9 +142,7 @@ class MainWindow(QMainWindow):
         self._connect()
         # The theme is applied before any document opens, so the first raster is already
         # produced in the right colours (the image is theme-specific, spec §5).
-        self.apply_theme(
-            load_theme_mode() if persist else ThemeMode.SYSTEM, remember=False
-        )
+        self.apply_theme(load_theme_mode() if persist else ThemeMode.SYSTEM, remember=False)
         self._restore_window_state()
         self.statusBar().showMessage("open a Markdown file to begin (Ctrl+O)")
 
@@ -289,6 +294,9 @@ class MainWindow(QMainWindow):
         self.action_fit = _action(self, "适应视图", "Ctrl+0", self._fit)
         self.action_zoom_in = _action(self, "放大", "Ctrl+=", lambda: self.view.zoom_by(1.25))
         self.action_zoom_out = _action(self, "缩小", "Ctrl+-", lambda: self.view.zoom_by(0.8))
+        self.action_snap = _action(self, "吸附到网格", "", self._toggle_snap)
+        self.action_snap.setCheckable(True)
+        self.action_snap.setChecked(True)
 
         toolbar = self.addToolBar("view")
         toolbar.setMovable(False)
@@ -301,6 +309,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.action_zoom_out)
         toolbar.addAction(self.action_zoom_in)
         toolbar.addAction(self.action_fit)
+        toolbar.addAction(self.action_snap)
         toolbar.addSeparator()
         toolbar.addWidget(self._build_zoom_box())
         toolbar.addSeparator()
@@ -522,16 +531,39 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
         self._overlay.adjustSize()
 
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
+    def _place_overlay(self) -> None:
+        """Pin the strip inside the board's bottom-right corner (T-035, D-044).
+
+        The strip is a child of the *window*, so its position needs the central widget's
+        **origin** as well as its size. Using the size alone (the pre-T-035 code) left it
+        ``central.x()`` / ``central.y()`` px away from the corner — measured 280 px / 48 px
+        with the sidebar open, against the 18 px the code and the spec both intended.
+        """
+        central = self.centralWidget()
+        if central is None:  # pragma: no cover - set in __init__ and never cleared
+            return
         size = self._overlay.sizeHint()
         self._overlay.resize(size)
-        central = self.centralWidget()
-        if central is not None:
-            self._overlay.move(
-                central.width() - size.width() - 18,
-                central.height() - size.height() - 18,
-            )
+        board = central.geometry()
+        self._overlay.move(
+            board.x() + board.width() - size.width() - OVERLAY_MARGIN,
+            board.y() + board.height() - size.height() - OVERLAY_MARGIN,
+        )
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Follow the *board's* resize, not only the window's (T-035).
+
+        Collapsing or widening the sidebar changes the central widget's geometry without
+        resizing the window, so ``resizeEvent`` alone would leave the strip behind.
+        """
+        if watched is self.view and event.type() == QEvent.Type.Resize:
+            self._place_overlay()
+        return super().eventFilter(watched, event)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._place_overlay()
+        self.view.refresh_scene_rect()  # a screen of pannable canvas on every side (T-040)
 
     def _connect(self) -> None:
         self.session.document_loaded.connect(self._rebuild_items)
@@ -545,6 +577,9 @@ class MainWindow(QMainWindow):
             bar.valueChanged.connect(self._on_viewport_scrolled)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._show_context_menu)
+        # The board also resizes on its own (sidebar width), so the floating strip follows
+        # the view and not just the window (T-035).
+        self.view.installEventFilter(self)
         self._follow_the_system_scheme()
 
     def _on_viewport_scrolled(self) -> None:
@@ -566,6 +601,11 @@ class MainWindow(QMainWindow):
     def renderer_build_error(self) -> str:
         """Why the body renderer could not be built, or ``""`` when it was fine."""
         return self._renderer_error
+
+    @property
+    def overlay(self) -> QWidget:
+        """The floating 刷新 / 全部还原 strip (read-only view for tests and tools, T-035)."""
+        return self._overlay
 
     def open_path(self, path: Path) -> bool:
         opened = self.session.open(path)
@@ -652,6 +692,15 @@ class MainWindow(QMainWindow):
             self._items[card_id] = item
         self._reparent_items()
         self._apply_geometry(tuple(self._items))
+        # The estimator only guesses; the documents exist now, so hand the real heights back
+        # (T-049) and lay the board out again -- no card keeps phantom padding, none clips.
+        self.session.adopt_measured_heights(
+            {
+                card_id: height
+                for card_id, item in self._items.items()
+                if (height := item.measured_body_height()) is not None
+            }
+        )
         self._queue_body_images()
 
     # ---------------------------------------------------------------- body images
@@ -675,9 +724,7 @@ class MainWindow(QMainWindow):
         candidates = self._render_candidates_now()
         self._render_candidates = set(candidates)
         pending = [
-            card_id
-            for card_id in candidates
-            if (card_id, bucket, theme) not in self._pixmaps
+            card_id for card_id in candidates if (card_id, bucket, theme) not in self._pixmaps
         ]
         self._release_offscreen_pixmaps()
         if not pending:
@@ -746,11 +793,8 @@ class MainWindow(QMainWindow):
             if item is not None and area.intersects(item.sceneBoundingRect()):
                 continue
             del self._pixmaps[key]
-            if item is not None and not any(
-                stored[0] == card_id for stored in self._pixmaps
-            ):
+            if item is not None and not any(stored[0] == card_id for stored in self._pixmaps):
                 item.set_image(None)
-
 
     def _current_bucket(self) -> float:
         """The render bucket for the current zoom; falls back to a 0.5 step."""
@@ -841,22 +885,47 @@ class MainWindow(QMainWindow):
         if document is None or not self._items:
             return  # nothing is drawn yet; _rebuild_items applies geometry afterwards
         self._reparent_items()
-        for card_id in card_ids:
+        # Parents first, always (E-028). A child's local position is computed against its parent's
+        # current scene position *and* clamped against the parent's current height, so the parent
+        # must already be placed. The incoming order cannot be trusted: the layout mapping is built
+        # in post-order (a card is stored after its children), which used to leave the last
+        # siblings of a re-stacked parent sitting on their old coordinates.
+        wanted = set(card_ids)
+        for card_id in document.tree.ordered_ids():
+            if card_id not in wanted:
+                continue
             item = self._items.get(card_id)
             layout = self.session.layouts.get(card_id)
             if item is None or layout is None:
                 continue
             item.set_card_geometry(layout.width, layout.height)
             item.setZValue(float(layout.z))
+            card = document.tree.cards.get(card_id)
+            # A re-layout replaces CardLayout objects, so the item has to point at the current
+            # one: its boundary clamp reads ``detached`` from here (E-026).
+            item.layout_state = layout
+            # A child inside its parent is frozen; free cards and parentless cards may be dragged
+            # (T-043, D-050).
+            item.set_movable(layout.detached or card is None or card.parent_id is None)
             parent_item = item.parentItem()
             offset = parent_item.scenePos() if parent_item is not None else QPointF(0.0, 0.0)
             item.setPos(QPointF(layout.x - offset.x(), layout.y - offset.y()))
             item.setVisible(not self._is_hidden(card_id))
+        self.view.refresh_scene_rect()  # cards moved: keep the pannable margin (T-040)
+
+    def _toggle_snap(self) -> None:
+        """Turn grid snapping on or off (T-048, D-051); the state lives for this window only."""
+        state = "on" if self.action_snap.isChecked() else "off"
+        self.statusBar().showMessage(f"grid snap {state}")
 
     def _on_item_moved(self, item: object, x: float, y: float) -> None:
         if isinstance(item, CardItem):
-            self.session.move_card(item.card.card_id, x, y)
-            self.statusBar().showMessage(f"moved {item.card.title!r} to ({x:.0f}, {y:.0f})")
+            self.session.move_card(item.card.card_id, x, y, snap=self.action_snap.isChecked())
+            layout = self.session.layouts[item.card.card_id]
+            note = " (snapped to grid)" if (layout.x, layout.y) != (x, y) else ""
+            self.statusBar().showMessage(
+                f"moved {item.card.title!r} to ({layout.x:.0f}, {layout.y:.0f}){note}"
+            )
 
     def _on_link_clicked(self, source: object, anchor: str) -> None:
         """Jump to the card a TOC line points at (FR-2.4, flow F10)."""
@@ -920,11 +989,7 @@ class MainWindow(QMainWindow):
 
         reclaim = menu.addAction("收回所有子卡片")
         reclaim.setEnabled(
-            any(
-                layouts[child].detached
-                for child in tree.descendants(card_id)
-                if child in layouts
-            )
+            any(layouts[child].detached for child in tree.descendants(card_id) if child in layouts)
         )
         reclaim.triggered.connect(lambda: self.session.reclaim(card_id))
 
@@ -933,9 +998,7 @@ class MainWindow(QMainWindow):
         fold.triggered.connect(lambda: self.session.fold(card_id))
 
 
-def _action(
-    window: MainWindow, text: str, shortcut: str, slot: Callable[[], None]
-) -> QAction:
+def _action(window: MainWindow, text: str, shortcut: str, slot: Callable[[], None]) -> QAction:
     action = QAction(text, window)
     action.setShortcut(QKeySequence(shortcut))
     action.triggered.connect(slot)

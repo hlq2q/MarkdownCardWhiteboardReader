@@ -82,9 +82,7 @@ def test_loads_a_tree_and_carries_warnings(tmp_path: Path) -> None:
 
 def test_dividers_produce_several_big_sections(tmp_path: Path) -> None:
     blocks = (heading(0, "A", 1), divider(1), heading(2, "B", 1))
-    loaded = load_document(
-        tmp_path / "doc.md", reader=FakeReader("x"), parser=FakeParser(blocks)
-    )
+    loaded = load_document(tmp_path / "doc.md", reader=FakeReader("x"), parser=FakeParser(blocks))
     assert len(loaded.tree.root_ids) == 2
     titles = [loaded.tree.cards[root].title for root in loaded.tree.root_ids]
     assert titles == ["Section 1", "Section 2"]

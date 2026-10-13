@@ -31,7 +31,9 @@ SEEN: list[str] = []
 def main() -> int:
     app = QApplication(sys.argv)
     # Qt swallows exceptions raised inside a slot; this hook turns them into a failure.
-    sys.excepthook = lambda kind, exc, tb: SEEN.append("".join(traceback.format_exception(kind, exc, tb)))
+    sys.excepthook = lambda kind, exc, tb: SEEN.append(
+        "".join(traceback.format_exception(kind, exc, tb))
+    )
 
     window = MainWindow(persist=False)
     window.show()
@@ -51,7 +53,11 @@ def main() -> int:
     for mode in (ThemeMode.SYSTEM, ThemeMode.DARK, ThemeMode.LIGHT, ThemeMode.DARK):
         theme = window.apply_theme(mode)
         steps.append(
-            {"mode": mode.value, "theme": theme.value, "scene": window.scene.visual_palette.theme.value}
+            {
+                "mode": mode.value,
+                "theme": theme.value,
+                "scene": window.scene.visual_palette.theme.value,
+            }
         )
     report["steps"] = steps
 
