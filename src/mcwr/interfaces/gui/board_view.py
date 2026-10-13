@@ -5,7 +5,15 @@ from __future__ import annotations
 from typing import Final
 
 from PySide6.QtCore import QLineF, QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QTransform, QWheelEvent
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QTransform,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
 
 from mcwr.domain.models import Viewport
@@ -250,6 +258,31 @@ class BoardView(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """Ctrl + right button belongs to the size-reset gesture, so it never opens a menu (T-057).
+
+        Windows asks for the context menu when the right button goes *up* -- i.e. after the first
+        click of a double-click. Without this the menu opened there and swallowed the second click,
+        which is why the reset gesture never reached the view at all.
+        """
+        if self.vetoes_context_menu(event.modifiers()):
+            event.accept()
+            return
+        # This is what CustomContextMenu would have done for us; doing it here is what makes the
+        # veto below possible at all.
+        self.customContextMenuRequested.emit(event.pos())
+        event.accept()
+
+    def vetoes_context_menu(self, modifiers: Qt.KeyboardModifiers) -> bool:
+        """Whether a context-menu request must be dropped (T-051/T-057).
+
+        Two owners of the right button: a marquee selection (D-052), and Ctrl -- half of the
+        size-reset gesture, so no menu may appear between the two clicks of a double-click.
+        """
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            return True
+        return self.suppresses_context_menu()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         super().mouseDoubleClickEvent(event)
