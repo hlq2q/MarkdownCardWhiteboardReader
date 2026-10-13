@@ -30,9 +30,7 @@ def _paint_background(scale: float, *, size: int = 120) -> QImage:
 
 def _distinct_colours(image: QImage) -> set[str]:
     return {
-        image.pixelColor(x, y).name()
-        for y in range(image.height())
-        for x in range(image.width())
+        image.pixelColor(x, y).name() for y in range(image.height()) for x in range(image.width())
     }
 
 

@@ -114,9 +114,7 @@ def test_a_document_of_exactly_the_limit_is_opened_with_rich_rendering(tmp_path:
     # Since T-031 rendering is viewport-bound, so the boundary must be probed at a zoom where
     # a rich card is big enough on screen: fit zoom would (correctly) render nothing.
     rich = next(
-        item
-        for item in window.card_items.values()
-        if item.card.kind is CardKind.MATH_BLOCK
+        item for item in window.card_items.values() if item.card.kind is CardKind.MATH_BLOCK
     )
     window.view.set_zoom(100.0)
     window.view.centerOn(rich.sceneBoundingRect().center())

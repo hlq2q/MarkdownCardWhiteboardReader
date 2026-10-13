@@ -149,7 +149,7 @@ def test_the_match_is_case_sensitive(tmp_path: Path) -> None:
 
 
 def test_enter_again_walks_through_the_hits_and_wraps(tmp_path: Path) -> None:
-    """"shared token" sits in Alpha and Beta: Enter steps 1/2 → 2/2 → 1/2."""
+    """ "shared token" sits in Alpha and Beta: Enter steps 1/2 → 2/2 → 1/2."""
     window = _open(tmp_path)
     alpha, beta = _center_of(window, "Alpha"), _center_of(window, "Beta")
 

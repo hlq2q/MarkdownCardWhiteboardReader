@@ -101,9 +101,11 @@ def _fill_and_ink(image: QImage, palette: Palette, kind: CardKind) -> tuple[int,
         row = bits[y * stride : (y + 1) * stride]
         for offset in range(0, min(len(row), width * 4), 4):
             pixel = QColor(row[offset + 2], row[offset + 1], row[offset])
-            if abs(pixel.red() - fill.red()) <= 6 and abs(
-                pixel.green() - fill.green()
-            ) <= 6 and abs(pixel.blue() - fill.blue()) <= 6:
+            if (
+                abs(pixel.red() - fill.red()) <= 6
+                and abs(pixel.green() - fill.green()) <= 6
+                and abs(pixel.blue() - fill.blue()) <= 6
+            ):
                 fill_count += 1
             elif abs(pixel.lightness() - fill.lightness()) > 90:
                 ink_count += 1
@@ -130,9 +132,9 @@ def test_switching_the_theme_changes_no_layout_field() -> None:
     assert _layout_snapshot(window) == before, "a theme switch must not move or resize a card"
     assert window.session.document is document_before, "the document must not be re-parsed"
     assert window.card_items.keys() == items_before.keys(), "no card item was rebuilt"
-    assert all(
-        window.card_items[card_id] is items_before[card_id] for card_id in items_before
-    ), "the very same item objects must be repainted, not recreated"
+    assert all(window.card_items[card_id] is items_before[card_id] for card_id in items_before), (
+        "the very same item objects must be repainted, not recreated"
+    )
 
     assert window.theme_mode is ThemeMode.DARK
     assert window.visual_palette is DARK

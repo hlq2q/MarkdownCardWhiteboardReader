@@ -90,8 +90,7 @@ def _body_colours(item: CardItem, ignored: tuple[str, ...]) -> set[tuple[int, in
             pixel = (row[offset + 2], row[offset + 1], row[offset])
             far_from_every_ignored = all(
                 any(
-                    abs(pixel[channel] - other[channel]) > CHANNEL_TOLERANCE
-                    for channel in range(3)
+                    abs(pixel[channel] - other[channel]) > CHANNEL_TOLERANCE for channel in range(3)
                 )
                 for other in skip
             )

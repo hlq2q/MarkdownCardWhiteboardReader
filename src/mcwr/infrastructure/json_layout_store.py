@@ -102,8 +102,7 @@ class JsonLayoutStore:
             raise _corrupted(path, exc) from exc
         if snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION:
             reason = (
-                f"schema version {snapshot.schema_version} "
-                f"does not match {SNAPSHOT_SCHEMA_VERSION}"
+                f"schema version {snapshot.schema_version} does not match {SNAPSHOT_SCHEMA_VERSION}"
             )
             raise LayoutCorruptedError(str(path), reason)
         if snapshot.document.path_hash != document.path_hash:

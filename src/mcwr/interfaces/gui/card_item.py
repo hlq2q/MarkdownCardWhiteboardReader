@@ -116,16 +116,72 @@ class CardItem(QGraphicsObject):
         # Lay the text out as soon as the geometry is known (not only in ``paint``): a click
         # can be hit-tested before the first paint, and ``anchor_at`` must answer then too.
         self._document.setTextWidth(self.body_rect().width())
-        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, True)
+        # Frozen until the window says otherwise: a card inside its parent keeps its position
+        # relative to that parent and only moves when the parent does (T-043, D-050). Only free
+        # cards and top-level cards are handed the movable flag.
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
         self.setCacheMode(QGraphicsObject.CacheMode.DeviceCoordinateCache)
 
+    def set_movable(self, movable: bool) -> None:
+        """Allow or refuse an independent drag (T-043, D-050).
+
+        Qt moves an item on a left drag only while ``ItemIsMovable`` is set, so freezing the flag
+        is what makes "a child inside its parent does not move on its own" true for the mouse too.
+        The clamp in :meth:`itemChange` stays where it is: it keeps a programmatic placement
+        inside the parent's rectangle as well.
+        """
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable, movable)
+
     # ------------------------------------------------------------------ geometry
 
     def boundingRect(self) -> QRectF:
         return QRectF(0.0, 0.0, self._width, self._height)
+
+    @property
+    def is_movable(self) -> bool:
+        """Whether this card accepts an independent drag (T-043/D-050)."""
+        return bool(self.flags() & QGraphicsObject.GraphicsItemFlag.ItemIsMovable)
+
+    def is_in_header(self, scene_point: QPointF) -> bool:
+        """Whether ``scene_point`` falls in this card's title bar (E-027)."""
+        return 0.0 <= self.mapFromScene(scene_point).y() < HEADER_HEIGHT
+
+    def measured_body_height(self) -> float | None:
+        """The height this card's body really needs, measured from its document (T-049).
+
+        ``None`` for the kinds whose body is a rendered image: their document only holds a
+        placeholder, so the layout keeps the text estimator in charge for them.
+        """
+        if self.card.kind in CardItem._IMAGE_KINDS:
+            return None
+        self._document.setTextWidth(self.body_rect().width())
+        return self._document.size().height()
+
+    # Bodies of these kinds are a rendered image, not the document: no height to measure (T-049).
+    _IMAGE_KINDS = frozenset({CardKind.MATH_BLOCK, CardKind.MERMAID, CardKind.IMAGE})
+
+    def begin_view_drag(self, point: QPointF) -> None:
+        """Start a drag the *view* drives, with the same visual state as a normal one (E-027).
+
+        Qt's own press delivery can hand a press on the title bar to the card behind it, so the
+        view takes over for exactly those presses; this is the item-side half of that.
+        """
+        self._press_position = point
+        self._dragging = True
+        self.update()
+
+    def end_view_drag(self) -> None:
+        """Finish a view-driven drag: clear the drag state and report the position (E-027)."""
+        self._dragging = False
+        self.update()
+        moved = self._press_position is None or self._press_position != self.scenePos()
+        self._press_position = None
+        if moved:
+            position = self.scenePos()
+            self.moved.emit(self, position.x(), position.y())
 
     def set_card_geometry(self, width: float, height: float) -> None:
         if (width, height) == (self._width, self._height):
@@ -267,9 +323,7 @@ class CardItem(QGraphicsObject):
                 painter.translate(self.body_rect().topLeft())
                 painter.setPen(QPen(QColor(palette.text_primary)))
                 self._document.setTextWidth(self.body_rect().width())
-                self._document.drawContents(
-                    painter, QRectF(0, 0, self.body_rect().width(), 1e6)
-                )
+                self._document.drawContents(painter, QRectF(0, 0, self.body_rect().width(), 1e6))
             painter.restore()
 
         # Selection is a thicker border *and* another colour, never colour alone (§6).
@@ -342,8 +396,9 @@ class CardItem(QGraphicsObject):
                 self.link_clicked.emit(self, anchor)
                 event.accept()
                 return
-            self._dragging = True
-            self.update()
+            if self.flags() & QGraphicsObject.GraphicsItemFlag.ItemIsMovable:
+                self._dragging = True
+                self.update()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:

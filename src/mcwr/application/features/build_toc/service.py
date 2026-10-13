@@ -86,7 +86,5 @@ def toc_markdown(entries: Sequence[TocEntry]) -> str:
     if not entries:
         return EMPTY_TOC_TEXT
     top = min(entry.level for entry in entries)
-    lines = [
-        f"{'  ' * (entry.level - top)}- [{entry.label}](#{entry.anchor})" for entry in entries
-    ]
+    lines = [f"{'  ' * (entry.level - top)}- [{entry.label}](#{entry.anchor})" for entry in entries]
     return "\n".join(lines)

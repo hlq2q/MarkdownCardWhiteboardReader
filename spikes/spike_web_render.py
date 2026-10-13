@@ -266,7 +266,10 @@ def mem_report(label: str) -> dict[str, object]:
                 if info:
                     ws, peak = info
                     key = "self" if pid == own else f"{name}:{pid}"
-                    procs[key] = {"working_set_mb": round(ws / 2**20, 1), "peak_mb": round(peak / 2**20, 1)}
+                    procs[key] = {
+                        "working_set_mb": round(ws / 2**20, 1),
+                        "peak_mb": round(peak / 2**20, 1),
+                    }
                     total_ws += ws
                     total_peak += peak
             ok = k32.Process32NextW(snap, ctypes.byref(entry))
@@ -277,8 +280,10 @@ def mem_report(label: str) -> dict[str, object]:
         "total_working_set_mb": round(total_ws / 2**20, 1),
         "total_peak_mb": round(total_peak / 2**20, 1),
     }
-    print(f"[mem] {label}: total_ws={result['total_working_set_mb']}MB "
-          f"total_peak={result['total_peak_mb']}MB {procs}")
+    print(
+        f"[mem] {label}: total_ws={result['total_working_set_mb']}MB "
+        f"total_peak={result['total_peak_mb']}MB {procs}"
+    )
     return result
 
 
@@ -306,8 +311,10 @@ def write_shell() -> Path:
 def worker(mode: str) -> int:
     """Child process: one strategy, one environment (already set by the parent)."""
     os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
-    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --no-sandbox "
-                                                      "--disable-features=AudioServiceOutOfProcess")
+    os.environ.setdefault(
+        "QTWEBENGINE_CHROMIUM_FLAGS",
+        "--disable-gpu --no-sandbox --disable-features=AudioServiceOutOfProcess",
+    )
     from PySide6.QtCore import QEventLoop, QMarginsF, QSize, QSizeF, QTimer, QUrl
     from PySide6.QtGui import QImage, QPageLayout, QPageSize
     from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
@@ -372,14 +379,20 @@ def worker(mode: str) -> int:
         return None, time.perf_counter() - t0
 
     def wait_state(page: QWebEnginePage, timeout_s: float = 30.0) -> tuple[str, float]:
-        value, secs = wait_js(page, "window.mcwrState === 'done' ? 'done' : "
-                                   "(window.mcwrState === 'error' ? ('error:' + window.mcwrError) "
-                                   ": (window.mcwrState === 'ready' ? 'ready' : false))", timeout_s)
+        value, secs = wait_js(
+            page,
+            "window.mcwrState === 'done' ? 'done' : "
+            "(window.mcwrState === 'error' ? ('error:' + window.mcwrError) "
+            ": (window.mcwrState === 'ready' ? 'ready' : false))",
+            timeout_s,
+        )
         return str(value), secs
 
     def read_size(page: QWebEnginePage, timeout_s: float = 10.0) -> tuple[int, int, object]:
         """Content box in CSS px, read back as a JSON string (objects are unreliable)."""
-        value, _ = wait_js(page, "JSON.stringify([window.mcwrSize.w, window.mcwrSize.h])", timeout_s)
+        value, _ = wait_js(
+            page, "JSON.stringify([window.mcwrSize.w, window.mcwrSize.h])", timeout_s
+        )
         try:
             w, h = json.loads(str(value))
             return int(w), int(h), value
@@ -435,7 +448,9 @@ def worker(mode: str) -> int:
                     continue
                 css_w, css_h, raw_size = read_size(page)
                 if not css_w or not css_h:
-                    renders.append({"name": name, "zoom": zoom, "error": f"size readback {raw_size!r}"})
+                    renders.append(
+                        {"name": name, "zoom": zoom, "error": f"size readback {raw_size!r}"}
+                    )
                     continue
                 t_lay = time.perf_counter()
                 page.setZoomFactor(zoom)
@@ -474,9 +489,7 @@ def worker(mode: str) -> int:
         page.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
         )
-        page.settings().setAttribute(
-            QWebEngineSettings.WebAttribute.PrintElementBackgrounds, True
-        )
+        page.settings().setAttribute(QWebEngineSettings.WebAttribute.PrintElementBackgrounds, True)
         loaded = {"ok": False}
         page.loadFinished.connect(lambda ok: loaded.update(ok=ok))
         page.load(QUrl.fromLocalFile(str(shell)))
@@ -509,9 +522,7 @@ def worker(mode: str) -> int:
                 QMarginsF(0, 0, 0, 0),
             )
             finished = {"ok": False}
-            page.pdfPrintingFinished.connect(
-                lambda path, ok: finished.update(ok=ok, path=path)
-            )
+            page.pdfPrintingFinished.connect(lambda path, ok: finished.update(ok=ok, path=path))
             page.printToPdf(str(pdf), layout)
             t0 = time.perf_counter()
             while not finished["ok"] and time.perf_counter() - t0 < 40:
@@ -617,10 +628,14 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
             return 3
 
-    missing = [str(p) for p in (
-        ASSETS / "katex" / "katex.min.js",
-        ASSETS / "mermaid" / "dist" / "mermaid.min.js",
-    ) if not p.is_file()]
+    missing = [
+        str(p)
+        for p in (
+            ASSETS / "katex" / "katex.min.js",
+            ASSETS / "mermaid" / "dist" / "mermaid.min.js",
+        )
+        if not p.is_file()
+    ]
     if missing:
         print("missing assets, run with --fetch-assets first:")
         for path in missing:
@@ -636,8 +651,10 @@ def main(argv: list[str] | None = None) -> int:
         except subprocess.TimeoutExpired:
             payload = {"mode": mode, "exit_code": "timeout", "error": "worker exceeded 300s"}
         ok = payload.get("exit_code") == 0 and payload.get("renders")
-        print(f"    -> exit={payload.get('exit_code')} wall={payload.get('wall_ms')}ms "
-              f"platform={payload.get('platform')} renders={len(payload.get('renders') or [])} ok={ok}")
+        print(
+            f"    -> exit={payload.get('exit_code')} wall={payload.get('wall_ms')}ms "
+            f"platform={payload.get('platform')} renders={len(payload.get('renders') or [])} ok={ok}"
+        )
         if not ok and payload.get("log_tail"):
             for line in payload["log_tail"]:
                 print("      |", line)
@@ -655,7 +672,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"\nwrote {OUT / 'spike_web_render_result.json'}")
     any_ok = any(r.get("exit_code") == 0 and r.get("renders") for r in results)
-    print("VERDICT:", "at least one offscreen strategy rendered PNGs" if any_ok else "NOTHING RENDERED")
+    print(
+        "VERDICT:",
+        "at least one offscreen strategy rendered PNGs" if any_ok else "NOTHING RENDERED",
+    )
     return 0 if any_ok else 5
 
 

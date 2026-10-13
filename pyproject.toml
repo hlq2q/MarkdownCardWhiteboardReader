@@ -18,11 +18,16 @@ dependencies = [
 [dependency-groups]
 dev = [
     "hypothesis>=6.100.0",
-    "mypy>=1.11.0",
+    # Pinned (T-047): the type checker and the test runner decide pass/fail, so a silent
+    # version drift can turn a green tree red (or the other way round) without a code change.
+    "mypy==2.4.0",
     "pyinstaller>=6.10.0",
-    "pytest>=8.3.0",
+    "pytest==9.1.1",
     "pytest-cov>=5.0.0",
-    "ruff>=0.6.0",
+    # Pinned: the formatter's output has changed between ruff releases, and README lists
+    # `ruff format --check .` as a required check -- 31 files had drifted when this was a
+    # `>=` range (T-038/T-042).
+    "ruff==0.17.0",
 ]
 
 [project.scripts]

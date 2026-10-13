@@ -152,7 +152,7 @@ FONT_PX: Final[dict[str, float]] = {
 # -------------------------------------------------------------------------- metrics
 
 HEADER_HEIGHT: Final[float] = 34.0
-PADDING: Final[float] = 12.0
+PADDING: Final[float] = 6.0
 CARD_RADIUS: Final[float] = 8.0
 BUTTON_RADIUS: Final[float] = 6.0
 SELECTED_WIDTH: Final[float] = 2.5

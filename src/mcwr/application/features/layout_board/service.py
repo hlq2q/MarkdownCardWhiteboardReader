@@ -19,12 +19,17 @@ _MIN_INNER_WIDTH = 80.0
 
 @dataclass(frozen=True, slots=True)
 class LinearLayoutOptions:
-    """Spacing defaults for the initial arrangement (tunable, not user-visible yet)."""
+    """Spacing defaults for the initial arrangement (tunable, not user-visible yet).
+
+    Tightened in T-050 on the user's call: a parent's text ended too far above its first child. The
+    gap between a body's bottom and the next box was 40 px (12 bottom padding + trailing leading +
+    16 sibling gap) and is now about 28 px (6 + leading + 8).
+    """
 
     section_width: float = 960.0
     indent: float = 24.0
-    gap: float = 16.0
-    padding: float = 12.0
+    gap: float = 8.0
+    padding: float = 6.0
     header_height: float = 34.0
     min_height: float = 56.0
 

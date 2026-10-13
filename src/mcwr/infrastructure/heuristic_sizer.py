@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 
-from mcwr.domain.enums import CardKind
+from mcwr.domain.enums import BlockKind, CardKind
 from mcwr.domain.models import TOC_ENTRIES_ATTR, Block, Card
 
 _CHAR_WIDTH = 7.6
@@ -49,6 +49,11 @@ class HeuristicSizeEstimator:
         for index in card.own_block_indexes:
             block = blocks.get(index)
             if block is None:
+                continue
+            if block.kind is BlockKind.HEADING:
+                # The card's own heading is drawn in the header bar, not in the body -- counting it
+                # here made every heading card one line too tall (E-029, measured +20 px), which
+                # showed up as a gap between a parent's text and its first child.
                 continue
             if card.kind is CardKind.TOC:
                 # The card draws the generated entry list, not the one-line ``[TOC]`` marker.

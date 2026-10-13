@@ -183,9 +183,7 @@ def test_blank_primary_block_falls_back_to_the_first_own_block_with_content() ->
 def test_card_image_passes_kind_source_and_scale_to_the_renderer() -> None:
     blocks = {0: _math_block(0, "a+b")}
     renderer = FakeWebRenderer(Path("C:/cache/web-math-ab.png"))
-    result = card_image(
-        _card(CardKind.MATH_BLOCK), blocks, renderer=renderer, scale=1.5
-    )
+    result = card_image(_card(CardKind.MATH_BLOCK), blocks, renderer=renderer, scale=1.5)
     assert result == Path("C:/cache/web-math-ab.png")
     assert renderer.calls == [(CardKind.MATH_BLOCK, "a+b", 1.5)]
 

@@ -12,8 +12,15 @@ from mcwr.domain.invariants import tree_problems
 from mcwr.domain.models import Card, CardTree, SourceSpan, Viewport
 
 
-def _card(card_id: str, *, parent: str | None, children: tuple[str, ...], blocks: tuple[int, ...],
-          kind: CardKind = CardKind.HEADING, level: int | None = 1) -> Card:
+def _card(
+    card_id: str,
+    *,
+    parent: str | None,
+    children: tuple[str, ...],
+    blocks: tuple[int, ...],
+    kind: CardKind = CardKind.HEADING,
+    level: int | None = 1,
+) -> Card:
     return Card(
         card_id=card_id,
         kind=kind,
@@ -103,11 +110,24 @@ def test_invariants_report_unreachable_cards() -> None:
 
 
 def test_block_roles_match_the_spec() -> None:
-    for kind in (BlockKind.HEADING, BlockKind.TABLE, BlockKind.MATH_BLOCK, BlockKind.MERMAID,
-                 BlockKind.TASK_LIST, BlockKind.TOC, BlockKind.IMAGE, BlockKind.CODE):
+    for kind in (
+        BlockKind.HEADING,
+        BlockKind.TABLE,
+        BlockKind.MATH_BLOCK,
+        BlockKind.MERMAID,
+        BlockKind.TASK_LIST,
+        BlockKind.TOC,
+        BlockKind.IMAGE,
+        BlockKind.CODE,
+    ):
         assert role_of(kind) is BlockRole.CARD
-    for kind in (BlockKind.PARAGRAPH, BlockKind.BLOCKQUOTE, BlockKind.LIST, BlockKind.HTML,
-                 BlockKind.UNKNOWN):
+    for kind in (
+        BlockKind.PARAGRAPH,
+        BlockKind.BLOCKQUOTE,
+        BlockKind.LIST,
+        BlockKind.HTML,
+        BlockKind.UNKNOWN,
+    ):
         assert role_of(kind) is BlockRole.CONTENT
     assert role_of(BlockKind.THEMATIC_BREAK) is BlockRole.DIVIDER
     assert card_kind_for(BlockKind.PARAGRAPH) is None

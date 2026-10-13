@@ -55,9 +55,7 @@ def qt_slot_errors_fail_the_test(monkeypatch: pytest.MonkeyPatch) -> object:
     """Turn exceptions swallowed inside Qt slots into test failures."""
     captured: list[tuple[type[BaseException], BaseException, TracebackType | None]] = []
 
-    def hook(
-        exc_type: type[BaseException], exc: BaseException, tb: TracebackType | None
-    ) -> None:
+    def hook(exc_type: type[BaseException], exc: BaseException, tb: TracebackType | None) -> None:
         captured.append((exc_type, exc, tb))
         traceback.print_exception(exc_type, exc, tb)
 

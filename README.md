@@ -30,17 +30,30 @@
 
 ```bash
 python -m uv sync                                    # 安装依赖（默认走 pypi.org）
-python -m uv run mcwr gui spikes/samples/sample.md   # 打开白板窗口
+python -m uv run mcwr gui spikes/samples/sample.md   # 打开白板窗口（带文件）
+python -m uv run mcwr gui                            # 不带参数 = 空白白板，再用 Ctrl+O 选文件
 python -m uv run mcwr cards spikes/samples/sample.md # 打印卡片树（只读，无 GUI）
 python -m uv run mcwr cards spikes/samples/sample.md --format json
 python -m uv run mcwr version
 ```
 
-GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移、双击卡片居中、拖动卡片（子卡片跟随父卡片，且不能拖出父卡片边界）、
+不想装 Python 时用打包版（`--onedir`，同一套 CLI，双击 `mcwr.exe` 也行）：
+
+```powershell
+dist\mcwr\mcwr.exe gui "C:\path\to\你的.md"           # 与源码版行为一致
+dist\mcwr\mcwr.exe --self-check                      # 交付形态自检：返回码 0 = 打开 + 公式/Mermaid 出图正常
+```
+
+启动时会**自动恢复**上次的窗口大小/位置/缩放，并**重新打开上次的文件**（文件还在的话）；不带参数启动就是空白白板。
+程序只读：不会修改你的 Markdown，所有状态都写在 `%APPDATA%\MarkdownCardWhiteboardReader`（见下）。
+
+GUI 操作：滚轮缩放（以光标为锚点）、中键拖动平移（四周留有一屏余量，任意方向都能平移）、双击卡片居中、拖动**自由卡片**（右键「拖出为自由卡片」之后；附着在父卡内的子卡相对位置已冻结，只能随父卡一起移动，见 D-050）、
 右键卡片 → 拖出为自由卡片 / 还原到父卡片 / 收回所有子卡片 / 折叠展开，右下角 **刷新** 与 **全部还原**；
 文档里写了 `[TOC]`（或 `[[TOC]]`）时，目录卡会列出全部标题，**点击条目跳到对应标题卡**（自动展开被折叠的祖先，不改变缩放）；
-工具栏最右侧是**主题三态**（跟随系统 / 浅色 / 深色），切换只重绘、不移动任何卡片，选择会记住。
-`Ctrl+N` 新建窗口（新进程，独立会话）、`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放。
+工具栏最右侧是**主题三态**（跟随系统 / 浅色 / 深色），切换只重绘、不移动任何卡片，选择会记住；
+工具栏还有**搜索框**（大小写敏感、搜每张卡自己的正文，回车定位、再回车循环命中）与**大纲侧栏**
+（左侧可停靠、可收起，见下）。
+`Ctrl+N` 新建窗口（新进程，独立会话）、`Ctrl+O` 打开、`F5` 刷新、`Ctrl+Shift+R` 全部还原、`Ctrl+0` 适应视图、`Ctrl+±` 缩放、`Ctrl+B` 收起/展开大纲侧栏。
 
 ## 开发
 
@@ -57,11 +70,47 @@ python -m uv run ruff check . && python -m uv run ruff format --check .
 python -m uv run mypy src
 python -m uv run python spikes/spike_real_window.py          # 真实平台启动一次（1.5s 自动退出）
 
-# 打包（onedir）与交付形态验证
+# 底层打包步骤（一般不用手敲，见下一节的一键脚本）
 python -m uv run pyinstaller packaging/mcwr.spec --noconfirm
 dist\mcwr\mcwr.exe --self-check                              # 返回码 0 = 打开+公式/Mermaid 出图正常
 $env:MCWR_SELF_CHECK_REPORT="$PWD\selfcheck.json"; dist\mcwr\mcwr.exe --self-check   # 报告落到文件
 ```
+
+## 打包成 setup.exe（`Packaging.bat`）
+
+双击或在仓库根执行 `Packaging.bat`，它会依次做五件事，任一步失败立刻非零退出：
+
+> **先关掉正在运行的 mcwr**：脚本开头有一道预检——检测到 `mcwr.exe` 还在运行就直接退出并提示（`Access is denied` 的成因见 `ERRORS.md` E-025：应用运行时 Windows 锁住了 `.venv\Scripts\mcwr.exe`，`uv sync` 换不掉它）。源码方式启动的窗口、`dist\mcwr\mcwr.exe`、已安装版本都算；`/nosync` 会跳过预检与同步。
+
+1. **读版本**——从 `src/mcwr/__init__.py` 的 `__version__`，并与 `pyproject.toml` 的 `version` 交叉校验（不一致直接失败，避免打出错版本号的包）；
+2. `uv sync`；
+3. **PyInstaller onedir** 重建 `dist\mcwr\`（先清 `build\` 与 `dist\mcwr`）；
+4. **交付形态自检**——跑 `dist\mcwr\mcwr.exe --self-check`（真的打开文档、渲出公式与 Mermaid），非 0 就停，绝不让坏包进安装器；
+5. **Inno Setup** 编译 `packaging/mcwr-installer.iss` → 产出 **`packaging\Output\mcwr-setup-<版本>.exe`**。
+
+```bat
+Packaging.bat                 :: 预检 + 完整流程（默认 lzma2/max，580 MB 压缩耗时较久）
+Packaging.bat /fast           :: 压缩换 lzma2/fast，体积大些但快很多（迭代用）
+Packaging.bat /nobuild        :: 复用现有 dist\mcwr，只重打安装包
+Packaging.bat /nosync         :: 跳过 uv sync（也跳过运行中预检）
+Packaging.bat /verify         :: 打完再静默装到临时目录、跑安装后 --self-check、再卸载
+```
+
+**项目改动后照旧可用**：版本不写死、路径全部相对脚本/`.iss` 自身（任意工作目录都能编译）、
+`ISCC.exe` 自动探测（`MCWR_ISCC` 环境变量 → `PATH` → 注册表 → 常见安装目录）。装完再跑一次新的 setup.exe
+就是**升级覆盖**（`AppId` 固定），不会在"应用和功能"里并排出现两份。
+
+> 成功判据：最后一行是 `[ok] Packaging finished.`（脚本退出码 0）。**从 PowerShell 里调用时不要看 `$?`/报错**：
+> uv 与 Chromium 会把正常信息写到 stderr，PowerShell 会把它当成错误显示；要拿真实退出码请用
+> `cmd /c "Packaging.bat ..."` 后看 `$LASTEXITCODE`（或直接双击运行）。
+
+安装形态与取舍：
+
+- 默认**按用户安装**（免 UAC），落到 `%LOCALAPPDATA%\Programs\MarkdownCardWhiteboardReader`；要装到
+  `C:\Program Files` 请从提权 shell 运行 `mcwr-setup-<版本>.exe /ALLUSERS`。
+- 卸载**不删** `%APPDATA%\MarkdownCardWhiteboardReader` 与渲染缓存（那是用户数据，不是程序）；
+- **不做代码签名**（本机无证书，D-035/D-043）；安装向导界面为英文（Inno Setup 不自带简中语言包）；
+- 安装包产物 `packaging\Output\` 不入库（`.gitignore`）。
 
 > 本机 pip 全局索引指向 `pypi.tuna.tsinghua.edu.cn`，该镜像对 `uv` 包返回 403；
 > 依赖安装请使用默认的 pypi.org，或显式指定 `--default-index https://pypi.org/simple`。

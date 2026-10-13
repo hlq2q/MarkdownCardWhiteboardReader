@@ -67,9 +67,7 @@ class CardMapping:
 
     def summary(self) -> str:
         """One-line human-readable counts, used in the refresh notes."""
-        return (
-            f"{len(self.kept)} kept, {len(self.added)} added, {len(self.removed)} removed"
-        )
+        return f"{len(self.kept)} kept, {len(self.added)} added, {len(self.removed)} removed"
 
 
 @dataclass(frozen=True, slots=True)

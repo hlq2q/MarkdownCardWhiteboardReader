@@ -40,9 +40,7 @@ class RecordingRenderer:
 
 
 def _document(sections: int = SECTIONS) -> str:
-    return "\n".join(
-        f"# Section {index}\n\n$$x_{{{index}}}$$\n" for index in range(sections)
-    )
+    return "\n".join(f"# Section {index}\n\n$$x_{{{index}}}$$\n" for index in range(sections))
 
 
 def _open(tmp_path: Path) -> tuple[MainWindow, RecordingRenderer]:

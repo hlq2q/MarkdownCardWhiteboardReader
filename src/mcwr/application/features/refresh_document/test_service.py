@@ -397,6 +397,7 @@ def test_relocated_twins_do_not_cross_match_across_paragraphs() -> None:
     assert_geometry(old_layouts[twin.card_id], plan.layouts[twin.card_id])
     assert_partition(plan.mapping, old, new)
 
+
 def test_removed_card_does_not_leak_into_the_result() -> None:
     old = build([heading(0, "Intro", 1), code(1, "answer = 1"), code(2, "stays", lang="bash")])
     new = build([heading(0, "Intro", 1), code(1, "answer = 1")])
@@ -495,13 +496,15 @@ def test_identical_cards_relocate_by_document_order_without_cross_matching() -> 
     assert plan.mapping.added[0] == titled(new, "Renamed left").card_id
     assert plan.mapping.removed[0] == titled(old, "Left").card_id
 
-    old_code, new_code = card_under(old, ("Left",), CardKind.CODE), card_under(
-        new, ("Renamed left",), CardKind.CODE
+    old_code, new_code = (
+        card_under(old, ("Left",), CardKind.CODE),
+        card_under(new, ("Renamed left",), CardKind.CODE),
     )
     assert plan.mapping.kept[old_code.card_id] == new_code.card_id
     assert_geometry(old_layouts[old_code.card_id], plan.layouts[new_code.card_id])
-    right_code, new_right = card_under(old, ("Right",), CardKind.CODE), card_under(
-        new, ("Right",), CardKind.CODE
+    right_code, new_right = (
+        card_under(old, ("Right",), CardKind.CODE),
+        card_under(new, ("Right",), CardKind.CODE),
     )
     assert plan.mapping.kept[right_code.card_id] == new_right.card_id
     assert_geometry(old_layouts[right_code.card_id], plan.layouts[new_right.card_id])

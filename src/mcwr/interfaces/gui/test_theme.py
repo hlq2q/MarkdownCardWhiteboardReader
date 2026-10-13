@@ -87,7 +87,7 @@ def test_secondary_text_links_and_errors_clear_wcag_aa() -> None:
 
 
 def test_the_card_edge_and_the_selection_stay_recognisable_at_three_to_one() -> None:
-    """"Clear but not harsh" (D-021) has a number: the edge clears 3:1, the fill only 1.2:1."""
+    """ "Clear but not harsh" (D-021) has a number: the edge clears 3:1, the fill only 1.2:1."""
     for palette in PALETTES.values():
         assert contrast_ratio(palette.card_edge, palette.card_bg) >= MIN_RATIO_NON_TEXT
         assert contrast_ratio(palette.selected, palette.card_bg) >= MIN_RATIO_NON_TEXT

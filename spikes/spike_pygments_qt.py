@@ -38,6 +38,7 @@ MIN_RATIO = 4.5
 
 def contrast(foreground: str, background: str) -> float:
     """WCAG 2.1 contrast ratio between two ``#RRGGBB`` colours."""
+
     def luminance(color: str) -> float:
         out = []
         for offset in (1, 3, 5):
@@ -74,17 +75,23 @@ def main() -> int:
             ratio = contrast(colour, code_bg)
             ok = ratio >= MIN_RATIO
             verdict &= ok
-            print(f"  {token_label:<8} {colour}  contrast vs code_bg = {ratio:5.2f}  "
-                  f"{'OK' if ok else 'BELOW 4.5'}")
+            print(
+                f"  {token_label:<8} {colour}  contrast vs code_bg = {ratio:5.2f}  "
+                f"{'OK' if ok else 'BELOW 4.5'}"
+            )
 
-        html = highlight(CODE, PythonLexer(), HtmlFormatter(noclasses=True, nowrap=True,
-                                                            style=style_name))
+        html = highlight(
+            CODE, PythonLexer(), HtmlFormatter(noclasses=True, nowrap=True, style=style_name)
+        )
         document = QTextDocument()
         document.setDefaultStyleSheet(f"pre, code {{ background-color: {code_bg}; }}")
         document.setHtml(f'<pre style="background-color:{code_bg}; margin:0;">{html}</pre>')
 
-        image = QImage(int(document.size().width()) + 40, int(document.size().height()) + 20,
-                       QImage.Format.Format_RGB32)
+        image = QImage(
+            int(document.size().width()) + 40,
+            int(document.size().height()) + 20,
+            QImage.Format.Format_RGB32,
+        )
         image.fill(code_bg)
         painter = QPainter(image)
         painter.translate(10.0, 10.0)

@@ -40,9 +40,7 @@ def paragraph(index: int, text: str) -> Block:
 
 
 def toc_marker(index: int) -> Block:
-    return Block(
-        index=index, kind=BlockKind.TOC, raw_text="[TOC]", text_normalized="[TOC]"
-    )
+    return Block(index=index, kind=BlockKind.TOC, raw_text="[TOC]", text_normalized="[TOC]")
 
 
 def _tree(*blocks: Block) -> CardTree:

@@ -40,9 +40,7 @@ def restore_snapshot(
     try:
         stored = store.load_snapshot(document, session=session)
     except LayoutCorruptedError as exc:
-        reason = (
-            f"stored layout for this document is unusable ({exc.reason}); layout rebuilt"
-        )
+        reason = f"stored layout for this document is unusable ({exc.reason}); layout rebuilt"
         return RestoredLayout(
             snapshot=empty_snapshot(document, window_uuid=window_uuid),
             warnings=(reason,),

@@ -75,7 +75,9 @@ def main() -> int:
             digest = hashlib.md5(payload).hexdigest()[:12]
             target = OUT / f"probe_{card.kind.value}.png"
             target.write_bytes(payload)
-            print(f"    item image: {item._image.width()}x{item._image.height()} md5={digest} -> {target}")
+            print(
+                f"    item image: {item._image.width()}x{item._image.height()} md5={digest} -> {target}"
+            )
 
     renderer = window._renderer  # noqa: SLF001
     if renderer is not None:

@@ -17,9 +17,7 @@ from mcwr.application.features.render_card.ports import WebCardRenderer
 from mcwr.domain.enums import CardKind
 from mcwr.domain.models import Block, Card
 
-WEB_RENDER_KINDS: Final[frozenset[CardKind]] = frozenset(
-    {CardKind.MATH_BLOCK, CardKind.MERMAID}
-)
+WEB_RENDER_KINDS: Final[frozenset[CardKind]] = frozenset({CardKind.MATH_BLOCK, CardKind.MERMAID})
 """Card kinds whose content only a browser engine can draw (KaTeX / Mermaid bundle)."""
 
 _MATH_DELIMITERS: Final[tuple[tuple[str, str], ...]] = (

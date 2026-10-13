@@ -238,9 +238,7 @@ def drag_cost(window, steps: int) -> float:
     window.view.set_zoom(100.0)
     document = window.session.document
     assert document is not None
-    heading = next(
-        item for item in window.card_items.values() if item.card.kind.value == "heading"
-    )
+    heading = next(item for item in window.card_items.values() if item.card.kind.value == "heading")
     window.view.centerOn(heading.sceneBoundingRect().center())
     window.view.viewport().repaint()
     viewport = window.view.viewport()
@@ -255,7 +253,9 @@ def drag_cost(window, steps: int) -> float:
         QTest.mouseMove(viewport, start + QPoint(4 * (step + 1), 2 * (step + 1)))
         viewport.repaint()
         timings.append((time.perf_counter() - started) * 1000.0)
-    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=start + QPoint(4 * steps, 2 * steps))
+    QTest.mouseRelease(
+        viewport, Qt.MouseButton.LeftButton, pos=start + QPoint(4 * steps, 2 * steps)
+    )
     return statistics.median(timings)
 
 
