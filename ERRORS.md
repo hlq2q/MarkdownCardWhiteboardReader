@@ -361,3 +361,19 @@
 - **验证**：重建后三关正常输出，`pytest -q` **退出码 0** 且 `[100%]` 无 FAILED。
 - **防止复发**：目录改名/移动后**先重建 `.venv`**；判定测试结果一律用**退出码或汇总行**，
   **禁止用 `grep -c FAILED` 计数**（命令没跑起来或输出被截断都会得到 0）。通用规则归 `pitfall-playbook` §13。
+
+## E-037 构建产物被纳入版本控制：149 MB 安装包导致首次推送会被 GitHub 拒绝（fixed，2026-10-13）
+
+- **现象**：准备推送时发现 `packaging/Output/mcwr-setup-0.1.0.exe`（155,651,823 字节）处于**受控**状态，
+  仓库 `.git` 体积 154 MB。GitHub 单文件硬上限 100 MB，直接推送必然被拒。
+- **根因**：打包输出目录 `packaging/Output/` 未被 `.gitignore` 覆盖，而提交时用的是 `git add -A`，
+  于是 Inno Setup 的产物被一并提交；此后每次推送都会带上这个 blob（它在历史里，不在索引里也照样上传）。
+- **修复**：`git rm -r --cached packaging/Output` + 把 `packaging/Output/` 写入 `.gitignore`；
+  再用 `git filter-branch --index-filter 'git rm -r --cached --ignore-unmatch packaging/Output' --prune-empty`
+  把该路径从全部提交中摘除，随后清 `refs/original`、`reflog expire --expire=now --all`、`git gc --prune=now`。
+  改写前把 `.git` 整份备份到工程之外（`mcwr-recovery/git-backup-before-filter`）。
+- **验证**：`.git` 154 MB → **1.1 MB**；`git rev-list --objects --all` 中无 >90 MB 的 blob；
+  远端 `packaging/Output/` 下 **0** 个文件；磁盘上的安装包**毫发无损**（155,651,823 字节）且已忽略。
+- **防止复发**：任何构建/打包输出目录（`dist/`、`build/`、`packaging/Output/`）都必须在 `.gitignore` 中；
+  首次推送前先跑一遍"受控文件里最大的几个"与"历史里最大的 blob"检查（`git ls-files -z | xargs -0 du -h | sort -rh`）。
+  需要分发安装包时用 GitHub Release 附件，而不是入库。

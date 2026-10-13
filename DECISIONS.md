@@ -592,3 +592,20 @@
   `git remote add t030 <上述目录>` + `git fetch t030`（只取不合并）。今后卸载/安装前必须把
   `C:\Users\31094\Projects` 加入 HiBit 忽略列表。
 - **关联**：T-067 / T-068；E-035；E-036。
+
+## D-062 源码公开发布到 GitHub（修订 D-035 的「不对外发布」范围）（accepted，2026-10-13）
+
+- **背景**：D-035 曾记录「只在本机运行、不对外发布，因此不需要安装包与代码签名」，并把 T-022（安装包与签名）
+  标为 `wontfix`。用户 2026-10-13 明确要求把工程上传到 `https://github.com/hlq2q/MarkdownCardWhiteboardReader`
+  （该仓库已存在且为 **public**）。
+- **决策**：① 源码公开发布：推送 `main` 到该仓库，作为可读存档与备份；② **构建产物不入库**——安装包
+  `packaging/Output/` 已加入 `.gitignore` 并从全部历史中摘除（见 E-037），需要分发时用 Release 附件；
+  ③ 远程认证使用 **SSH**（`git@github.com:hlq2q/MarkdownCardWhiteboardReader.git`），因为本机 HTTPS 走 schannel
+  时因吊销检查失败报 `CRYPT_E_NO_REVOCATION_CHECK`。
+- **理由**：用户最新确认优先于旧决策（state-keeper 铁律 10）。D-035 关于"本机自用所以不需要签名/自动更新/遥测"
+  的其余部分**继续有效**。
+- **影响**：① 仓库为 public ⇒ 文档中的本机绝对路径（如 `C:\Users\31094\...`）与四件套里的内部记录**对外可见**；
+  ② 工程历史为 55 个提交（重放 38 个保留原作者 `hlq2q`，恢复期的 17 个作者为 `recovery <recovery@local>`），
+  **与 D-061 保留的原始历史（31 提交）不共享祖先**；③ 恢复素材（会话记录、原始快照、`original-git-T030`）
+  位于工作区 `mcwr-recovery/`，**未上传**；④ 今后 `git push origin main` 即可。
+- **关联**：T-070；E-037；D-035（被修订）；D-061。
