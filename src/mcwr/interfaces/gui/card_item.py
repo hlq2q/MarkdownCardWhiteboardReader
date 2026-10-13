@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
     QTextCursor,
@@ -36,8 +37,10 @@ from PySide6.QtWidgets import (
 
 from mcwr.application.features.build_toc.models import TocEntry
 from mcwr.application.features.build_toc.service import toc_markdown
-from mcwr.domain.enums import CardKind
+from mcwr.application.features.render_card.service import strip_fenced_block
+from mcwr.domain.enums import BlockKind, CardKind
 from mcwr.domain.models import Block, Card, CardLayout
+from mcwr.infrastructure.pygments_highlighter import highlight_html
 from mcwr.interfaces.gui.theme import (
     BORDER_WIDTH,
     CARD_RADIUS,
@@ -45,8 +48,10 @@ from mcwr.interfaces.gui.theme import (
     CODE_FONT_FALLBACK,
     FONT_PX,
     HEADER_HEIGHT,
+    LEVEL_BAR_WIDTH,
     LIGHT,
     MIN_BODY_HEIGHT,
+    MIN_LEGIBLE_ON_SCREEN_WIDTH,
     PADDING,
     SELECTED_WIDTH,
     SHADOW_RGBA,
@@ -54,6 +59,7 @@ from mcwr.interfaces.gui.theme import (
     UI_FONT_FALLBACK,
     Palette,
     card_fill,
+    level_bar_colour,
     points,
     uses_shadow,
 )
@@ -90,6 +96,7 @@ class CardItem(QGraphicsObject):
         image: QPixmap | None = None,
         palette: Palette = LIGHT,
         toc: tuple[TocEntry, ...] = (),
+        depth: int = 0,
     ) -> None:
         super().__init__()
         self.card = card
@@ -97,6 +104,7 @@ class CardItem(QGraphicsObject):
         self._blocks = blocks
         self._palette = palette
         self._toc = toc
+        self._depth = max(depth, 0)
         self._document = _build_document(card, blocks, palette, toc)
         self._image = image
         self._pending = False
@@ -221,6 +229,7 @@ class CardItem(QGraphicsObject):
         del widget
         palette = self._palette
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        reduced = self.uses_reduced_detail(painter.transform().m11())
         fill = QColor(self._fill(palette))
         frame = QRectF(
             BORDER_WIDTH / 2.0,
@@ -237,6 +246,7 @@ class CardItem(QGraphicsObject):
 
         painter.setBrush(QBrush(fill))
         painter.drawRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
+        _draw_depth_bar(painter, frame, palette, self._depth, clipped=not reduced)
 
         header = QRectF(frame.left(), frame.top(), frame.width(), HEADER_HEIGHT)
         painter.setPen(QPen(QColor(palette.border), BORDER_WIDTH))
@@ -245,18 +255,22 @@ class CardItem(QGraphicsObject):
         )
         _draw_header_text(painter, header, self.card, palette)
 
-        painter.save()
-        painter.setClipRect(self.body_rect())
-        if self.has_image and self._image is not None:
-            _draw_body_image(painter, self.body_rect(), self._image)
-        else:
-            painter.translate(self.body_rect().topLeft())
-            painter.setPen(QPen(QColor(palette.text_primary)))
-            self._document.setTextWidth(self.body_rect().width())
-            self._document.drawContents(
-                painter, QRectF(0, 0, self.body_rect().width(), 1e6)
-            )
-        painter.restore()
+        if not reduced:
+            # T-033: below the thumbnail threshold the body is not laid out, not resampled and
+            # not drawn. That is where the per-card time went (docs/performance.md §4): the
+            # visible shape, border, stripe and header bar still say which card this is.
+            painter.save()
+            painter.setClipRect(self.body_rect())
+            if self.has_image and self._image is not None:
+                _draw_body_image(painter, self.body_rect(), self._image)
+            else:
+                painter.translate(self.body_rect().topLeft())
+                painter.setPen(QPen(QColor(palette.text_primary)))
+                self._document.setTextWidth(self.body_rect().width())
+                self._document.drawContents(
+                    painter, QRectF(0, 0, self.body_rect().width(), 1e6)
+                )
+            painter.restore()
 
         # Selection is a thicker border *and* another colour, never colour alone (§6).
         edge = QColor(palette.selected) if selected else QColor(palette.card_edge)
@@ -267,6 +281,16 @@ class CardItem(QGraphicsObject):
 
         if self._pending and not self.has_image:
             _draw_pending_badge(painter, header, palette)
+
+    def uses_reduced_detail(self, scale: float) -> bool:
+        """Whether this card is small enough on screen to be painted in its reduced form.
+
+        ``scale`` is the painter's current scale, i.e. the zoom the user is at, so this is the
+        same measure T-031 uses for its render floor (``MIN_LEGIBLE_ON_SCREEN_WIDTH``). Below
+        that width the card is a thumbnail: its body text cannot be read, and resampling a body
+        image is work nobody can see.
+        """
+        return self._width * scale < MIN_LEGIBLE_ON_SCREEN_WIDTH
 
     def _fill(self, palette: Palette) -> str:
         """Dragging wins over hovering, hovering over the kind's own fill (spec §4)."""
@@ -359,6 +383,28 @@ def _stylesheet(palette: Palette) -> str:
     )
 
 
+def _draw_depth_bar(
+    painter: QPainter, frame: QRectF, palette: Palette, depth: int, *, clipped: bool = True
+) -> None:
+    """A 3 px stripe on the left edge carrying the nesting depth (visual spec §6.1).
+
+    Clipped to the card's rounded outline so the stripe follows the corner radius; the card
+    border is painted afterwards and therefore stays visible on top of it. ``clipped=False``
+    is the thumbnail path (T-033): no ``QPainterPath`` and no clip state, which is the whole
+    point of not doing the work twice.
+    """
+    if clipped:
+        outline = QPainterPath()
+        outline.addRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
+        painter.save()
+        painter.setClipPath(outline)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor(level_bar_colour(palette, depth))))
+    painter.drawRect(QRectF(frame.left(), frame.top(), LEVEL_BAR_WIDTH, frame.height()))
+    if clipped:
+        painter.restore()
+
+
 def _draw_pending_badge(painter: QPainter, header: QRectF, palette: Palette) -> None:
     """A small "rendering…" pill on the right of the header (D-022 item 4)."""
     painter.setFont(_font(UI_FONT, FONT_PX["control"], bold=True))
@@ -387,9 +433,20 @@ def _build_document(
 ) -> QTextDocument:
     """Render this card's own blocks (never its children's) as Markdown text.
 
-    A TOC card is the one exception: its body is the generated list of heading links, which
-    is what makes the lines clickable (FR-2.4).
+    Two exceptions: a TOC card draws the generated heading links (FR-2.4), and a CODE card
+    draws lexically highlighted code (T-029). Everything else keeps the Markdown path.
     """
+    document = QTextDocument()
+    document.setDefaultFont(_font(UI_FONT, FONT_PX["body"]))
+    # Code blocks and links must stay readable on the dark fill, where the markdown
+    # importer's own light colours would otherwise paint dark-on-dark.
+    document.setDefaultStyleSheet(_stylesheet(palette))
+
+    code = _own_code_block(card, blocks)
+    if code is not None:
+        document.setHtml(_code_html(code, palette))
+        return document
+
     parts: list[str] = []
     if card.kind is CardKind.TOC:
         parts.append(toc_markdown(toc))
@@ -403,13 +460,45 @@ def _build_document(
             text = block.raw_text.strip()
             if text:
                 parts.append(text)
-    document = QTextDocument()
-    document.setDefaultFont(_font(UI_FONT, FONT_PX["body"]))
-    # Code blocks and links must stay readable on the dark fill, where the markdown
-    # importer's own light colours would otherwise paint dark-on-dark.
-    document.setDefaultStyleSheet(_stylesheet(palette))
     document.setMarkdown("\n\n".join(parts))
     return document
+
+
+def _own_code_block(card: Card, blocks: Mapping[int, Block]) -> Block | None:
+    """The code block a CODE card draws, or ``None`` for every other card.
+
+    Highlighting takes over the body only when the card owns exactly one block that is code;
+    a hypothetical mixed code card keeps the Markdown path, so prose, tables and formulas are
+    never touched by this feature.
+    """
+    if card.kind is not CardKind.CODE or len(card.own_block_indexes) != 1:
+        return None
+    block = blocks.get(card.own_block_indexes[0])
+    if block is None or block.kind is not BlockKind.CODE:
+        return None
+    return block
+
+
+def _code_html(block: Block, palette: Palette) -> str:
+    """A ``<pre>`` block of highlighted code on the palette's code background.
+
+    The fence is stripped first: the IR keeps it, but it is Markdown syntax, not code (the
+    old Markdown path hid it because the importer consumed it — ERRORS.md E-022).
+
+    No wrapping is requested: the card draws code exactly as it did before this feature, only
+    with coloured tokens (superfluous layout changes are not part of T-029).
+    """
+    body = highlight_html(
+        strip_fenced_block(block.raw_text),
+        block.lang,
+        style=palette.pygments_style,
+        background=palette.code_bg,
+        fallback=palette.text_secondary,
+    )
+    return (
+        f'<pre style="background-color:{palette.code_bg}; '
+        f'color:{palette.text_primary}; margin:0;">{body}</pre>'
+    )
 
 
 def _draw_header_text(painter: QPainter, header: QRectF, card: Card, palette: Palette) -> None:

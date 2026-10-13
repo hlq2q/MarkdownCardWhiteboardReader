@@ -17,6 +17,7 @@ file, and the second render of the same payload has to be a cache hit.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -409,3 +410,126 @@ def test_the_shell_url_changes_when_the_shell_changes() -> None:
     assert first == _shell_file_name("<html>one</html>")
     assert first != _shell_file_name("<html>two</html>")
     assert first.startswith("_shell-") and first.endswith(".html")
+
+
+# ------------------------------------------------------------ capped cache (T-017)
+
+
+def _paging_renderer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, cap: int
+) -> QtWebCardRenderer:
+    """A renderer whose page *and* raster layers are faked, so files appear deterministically."""
+    renderer = _scripted_renderer(tmp_path, monkeypatch)
+    renderer.max_cache_entries = cap
+    monkeypatch.setattr(renderer, "_rasterize", lambda **_: _drawn_image())
+    return renderer
+
+
+def _render(renderer: QtWebCardRenderer, source: str) -> Path:
+    path = renderer.render(kind=CardKind.MATH_BLOCK, source=source, scale=1.0)
+    assert path is not None, f"render failed: {renderer.last_error}"
+    return path
+
+
+def test_the_default_cache_cap_is_the_value_the_user_gave() -> None:
+    from mcwr.infrastructure.web_renderer import MAX_CACHE_ENTRIES
+
+    assert MAX_CACHE_ENTRIES == 1024
+
+
+def test_the_cache_keeps_at_most_the_cap_and_drops_the_oldest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renderer = _paging_renderer(tmp_path, monkeypatch, cap=3)
+    first = _render(renderer, "payload 0")
+    for index in range(1, 4):
+        time.sleep(0.01)  # distinct mtimes, so "oldest" is unambiguous
+        _render(renderer, f"payload {index}")
+
+    rasters = sorted(path.name for path in tmp_path.glob("web-*.png"))
+    assert len(rasters) == 3, rasters
+    assert len(list(tmp_path.iterdir())) <= 3
+    assert renderer.stats["evicted"] == 1
+    assert first.is_file() is False, "the oldest raster is the one that goes"
+
+
+def test_a_cache_hit_refreshes_recency_so_a_used_raster_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renderer = _paging_renderer(tmp_path, monkeypatch, cap=2)
+    alpha = _render(renderer, "alpha")
+    time.sleep(0.01)
+    beta = _render(renderer, "beta")
+    time.sleep(0.01)
+
+    assert renderer.render(kind=CardKind.MATH_BLOCK, source="alpha", scale=1.0) == alpha
+    hits_before = renderer.stats["cache_hits"]
+    assert hits_before == 1
+
+    time.sleep(0.01)
+    gamma = _render(renderer, "gamma")
+
+    assert alpha.is_file(), "the raster read again must outlive the untouched one"
+    assert gamma.is_file()
+    assert beta.is_file() is False, "beta was the least recently used"
+
+
+def test_pruning_also_collects_stale_shell_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E-021 left ``_shell-<digest>.html`` copies behind; the cap must collect them too."""
+    from mcwr.infrastructure.web_renderer import _SHELL_NAME_PREFIX
+
+    renderer = _paging_renderer(tmp_path, monkeypatch, cap=2)
+    stale = tmp_path / f"{_SHELL_NAME_PREFIX}deadbeef.html"
+    stale.write_text("<html>old shell</html>", encoding="utf-8")
+    legacy = tmp_path / "_shell.html"
+    legacy.write_text("<html>pre-E-021 shell</html>", encoding="utf-8")
+    os.utime(stale, (1.0, 1.0))
+    os.utime(legacy, (2.0, 2.0))
+
+    first = _render(renderer, "a")
+    second = _render(renderer, "b")
+
+    assert stale.is_file() is False and legacy.is_file() is False
+    assert first.is_file() and second.is_file()
+
+
+def test_the_active_shell_and_the_working_pdf_are_never_evicted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renderer = _paging_renderer(tmp_path, monkeypatch, cap=3)
+    shell = renderer._write_shell()
+    pdf = tmp_path / "_page.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    os.utime(shell, (1.0, 1.0))
+    os.utime(pdf, (2.0, 2.0))
+
+    first = _render(renderer, "a")
+    time.sleep(0.01)
+    second = _render(renderer, "b")
+
+    assert shell.is_file(), "the page is loaded from this file"
+    assert pdf.is_file(), "the PDF is written and read inside one render"
+    assert sum(1 for path in (first, second) if path.is_file()) == 1, "one raster had to go"
+
+
+def test_pruning_a_missing_directory_is_not_an_error(tmp_path: Path) -> None:
+    renderer = QtWebCardRenderer(ASSETS_ROOT, tmp_path / "never-created")
+    renderer._prune_cache()  # must not raise: the render path degrades, never fails
+    assert renderer.stats["evicted"] == 0
+
+
+def test_pruning_at_the_production_cap_keeps_the_directory_within_it(tmp_path: Path) -> None:
+    """The arithmetic at the real cap (1024) matters, not only at the tiny test caps."""
+    from mcwr.infrastructure.web_renderer import MAX_CACHE_ENTRIES
+
+    renderer = QtWebCardRenderer(ASSETS_ROOT, tmp_path)
+    for index in range(MAX_CACHE_ENTRIES + 5):
+        (tmp_path / f"web-math-{index:04d}.png").write_bytes(b"x")
+    assert len(list(tmp_path.iterdir())) == MAX_CACHE_ENTRIES + 5
+
+    renderer._prune_cache()
+
+    assert len(list(tmp_path.iterdir())) == MAX_CACHE_ENTRIES
+    assert renderer.stats["evicted"] == 5

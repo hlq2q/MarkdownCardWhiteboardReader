@@ -64,3 +64,10 @@ python_version = "3.12"
 strict = true
 files = ["src/mcwr"]
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# Pygments 2.21 ships no `py.typed` marker, so strict mode would reject its imports as
+# untyped. Only the missing stubs are ignored: `pygments_highlighter` pins the Any values at
+# its own boundary (annotated returns, `str()` on token text), so our code stays checked.
+module = ["pygments.*"]
+ignore_missing_imports = true

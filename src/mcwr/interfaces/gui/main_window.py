@@ -5,17 +5,24 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
+from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QDockWidget,
     QFileDialog,
     QHBoxLayout,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QPushButton,
+    QToolBar,
+    QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -27,12 +34,15 @@ from mcwr.application.features.detach_restore.service import can_detach
 from mcwr.application.features.persist_layout.ports import LayoutStore
 from mcwr.application.features.render_card.ports import WebCardRenderer
 from mcwr.application.features.render_card.service import card_image, needs_web_render
+from mcwr.application.features.search_cards.models import SearchHit
+from mcwr.application.features.search_cards.service import search_cards
 from mcwr.domain.models import MAX_CARDS, CardId, WindowState
 from mcwr.interfaces.gui.board_view import BoardScene, BoardView
 from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.session import BoardSession
 from mcwr.interfaces.gui.theme import (
     LIGHT,
+    MIN_LEGIBLE_ON_SCREEN_WIDTH,
     Palette,
     Theme,
     ThemeMode,
@@ -44,6 +54,15 @@ from mcwr.shared.config import load_theme_mode, save_theme_mode
 from mcwr.shared.logging import logger, shorten
 
 ZOOM_PRESETS = ("50", "75", "100", "125", "150", "200")
+
+SCROLL_QUEUE_DELAY_MS: Final[int] = 180
+"""How long the viewport must settle before the render queue is recomputed while scrolling."""
+
+MAX_LIVE_PIXMAPS: Final[int] = 256
+"""Cap on the in-memory rasters; scrolling far away releases the ones left behind (T-031)."""
+
+OUTLINE_SHORTCUT: Final[str] = "Ctrl+B"
+"""Collapse/expand the outline sidebar (T-032); the panel also carries a "收起" button."""
 
 THEME_CHOICES: tuple[tuple[ThemeMode, str], ...] = (
     (ThemeMode.SYSTEM, "跟随系统"),
@@ -83,6 +102,15 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.view)
         self._items: dict[CardId, CardItem] = {}
         self._toc: tuple[TocEntry, ...] = ()
+        self._outline: QTreeWidget | None = None
+        self._outline_dock: QDockWidget | None = None
+        self._outline_collapse: QToolButton | None = None
+        self._outline_action: QAction | None = None
+        self._toolbar: QToolBar | None = None
+        self._search_box: QLineEdit | None = None
+        self._hits: tuple[SearchHit, ...] = ()
+        self._hit_index = -1
+        self._hit_query = ""
         self._zoom_box: QComboBox | None = None
         self._theme_box: QComboBox | None = None
         self._overlay = QWidget(self)
@@ -96,8 +124,13 @@ class MainWindow(QMainWindow):
         self._zoom_timer = QTimer(self)
         self._zoom_timer.setSingleShot(True)
         self._zoom_timer.timeout.connect(self._queue_body_images)
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.setSingleShot(True)
+        self._scroll_timer.timeout.connect(self._queue_body_images)
+        self._render_candidates: set[CardId] = set()
 
         self._build_actions()
+        self._build_outline()
         self._build_overlay()
         self._connect()
         # The theme is applied before any document opens, so the first raster is already
@@ -203,10 +236,20 @@ class MainWindow(QMainWindow):
         return theme
 
     def _apply_window_palette(self, palette: Palette) -> None:
-        """Chrome colours: the window, toolbar and status bar use the ``app_bg`` slot."""
+        """Chrome colours: window, toolbar, status bar, the outline dock and its widgets."""
         self.setStyleSheet(
-            "QMainWindow, QToolBar, QStatusBar "
-            f"{{ background: {palette.app_bg}; color: {palette.text_primary}; }}"
+            "QMainWindow, QToolBar, QStatusBar, QDockWidget "
+            f"{{ background: {palette.app_bg}; color: {palette.text_primary}; }} "
+            "QTreeWidget "
+            f"{{ background: {palette.app_bg}; color: {palette.text_primary}; "
+            f"border: 1px solid {palette.border}; }} "
+            "QTreeWidget::item:selected "
+            f"{{ background: {palette.selected}; color: {palette.card_bg}; }} "
+            "QToolButton#outlineCollapse "
+            f"{{ color: {palette.text_primary}; background: {palette.app_bg}; "
+            f"border: 1px solid {palette.border}; border-radius: 3px; padding: 1px 6px; }} "
+            "QToolButton#outlineCollapse:hover "
+            f"{{ background: {palette.card_bg}; border-color: {palette.selected}; }}"
         )
 
     def _sync_theme_box(self) -> None:
@@ -249,6 +292,7 @@ class MainWindow(QMainWindow):
 
         toolbar = self.addToolBar("view")
         toolbar.setMovable(False)
+        self._toolbar = toolbar
         toolbar.addAction(self.action_new_window)
         toolbar.addAction(self.action_open)
         toolbar.addAction(self.action_refresh)
@@ -261,6 +305,8 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._build_zoom_box())
         toolbar.addSeparator()
         toolbar.addWidget(self._build_theme_box())
+        toolbar.addSeparator()
+        toolbar.addWidget(self._build_search_box())
 
     def _build_zoom_box(self) -> QComboBox:
         box = QComboBox(self)
@@ -296,6 +342,172 @@ class MainWindow(QMainWindow):
             theme = self.apply_theme(mode)
             self.statusBar().showMessage(f"主题：{box.currentText()}（{theme.value}）")
 
+    def _build_search_box(self) -> QLineEdit:
+        """The toolbar search box of V1.1 (T-019): Enter finds, Enter again finds the next."""
+        box = QLineEdit(self)
+        box.setPlaceholderText("搜索…（回车定位）")
+        box.setClearButtonEnabled(True)
+        box.setFixedWidth(190)
+        box.returnPressed.connect(self._search_next)
+        self._search_box = box
+        return box
+
+    def _reset_search(self) -> None:
+        """Drop the hit list when another document loads: it described the previous one."""
+        self._hits = ()
+        self._hit_index = -1
+        self._hit_query = ""
+
+    def _search_next(self) -> None:
+        """Search case-sensitively in every card's own text, then step through the hits.
+
+        The query is re-run whenever it changes; pressing Enter again walks to the next hit and
+        wraps around — the "find next" behaviour a toolbar box is expected to have. Locating
+        goes through the same :meth:`_focus_card` as the outline and the TOC card.
+        """
+        box = self._search_box
+        if box is None:  # pragma: no cover - built in __init__
+            return
+        query = box.text().strip()
+        if not query:
+            self.statusBar().showMessage("输入关键字后回车")
+            return
+        document = self.session.document
+        if document is None:
+            self.statusBar().showMessage("先打开一个 Markdown 文件")
+            return
+        if query != self._hit_query:
+            self._hits = search_cards(document.tree, self.session.blocks, query)
+            self._hit_index = -1
+            self._hit_query = query
+        if not self._hits:
+            self.statusBar().showMessage(shorten(f"未找到：{query}"))
+            return
+        self._hit_index = (self._hit_index + 1) % len(self._hits)
+        hit = self._hits[self._hit_index]
+        if self._focus_card(hit.card_id):
+            position = f"{self._hit_index + 1}/{len(self._hits)}"
+            self.statusBar().showMessage(
+                shorten(f"{query}：第 {position} 个命中（{hit.matches} 处）· 已定位 {hit.title}")
+            )
+
+    def _build_outline(self) -> None:
+        """The dockable heading tree of V1.1 (T-020/T-032: a dockable, collapsible side panel).
+
+        Entries come from the same slice as the TOC card (``BoardSession.toc``), so the panel
+        and the card can never describe different documents, and a click goes through the same
+        :meth:`_focus_card` path as a TOC line. Since T-032 the panel carries its own collapse
+        control and the window a ``Ctrl+B`` shortcut; its visibility is deliberately *not*
+        persisted (D-041), so every start begins with it open on the left.
+        """
+        tree = QTreeWidget(self)
+        tree.setHeaderHidden(True)
+        tree.setUniformRowHeights(True)
+        tree.itemClicked.connect(self._on_outline_clicked)
+
+        dock = QDockWidget("大纲", self)
+        dock.setObjectName("outlineDock")
+        dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        dock.setWidget(self._build_outline_panel(tree))
+        dock.visibilityChanged.connect(self._on_outline_visibility_changed)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self._outline, self._outline_dock = tree, dock
+
+        toggle = dock.toggleViewAction()
+        toggle.setText("大纲")
+        if self._toolbar is not None:
+            self._toolbar.addSeparator()
+            self._toolbar.addAction(toggle)
+
+        shortcut = QAction(self)
+        shortcut.setShortcut(QKeySequence(OUTLINE_SHORTCUT))
+        shortcut.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.setCheckable(True)
+        shortcut.setChecked(True)
+        shortcut.triggered.connect(self._toggle_outline)
+        self.addAction(shortcut)
+        self._outline_action = shortcut
+
+    def _build_outline_panel(self, tree: QTreeWidget) -> QWidget:
+        """The dock content: a collapse button row above the heading tree (T-032)."""
+        panel = QWidget(self)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        row = QHBoxLayout()
+        row.setContentsMargins(4, 2, 4, 2)
+        row.addStretch(1)
+        collapse = QToolButton(panel)
+        collapse.setObjectName("outlineCollapse")
+        collapse.setText("收起")
+        collapse.setToolTip(f"收起侧栏（{OUTLINE_SHORTCUT}）")
+        collapse.clicked.connect(self._toggle_outline)
+        row.addWidget(collapse)
+        layout.addLayout(row)
+        layout.addWidget(tree, 1)
+        self._outline_collapse = collapse
+        return panel
+
+    def _toggle_outline(self) -> None:
+        """Show or hide the outline sidebar; both the button and Ctrl+B land here (T-032).
+
+        Hiding is not remembered on purpose (D-041): a restart starts with the panel open.
+        """
+        dock = self._outline_dock
+        if dock is None:  # pragma: no cover - built in __init__
+            return
+        dock.setVisible(not dock.isVisible())
+
+    def _on_outline_visibility_changed(self, visible: bool) -> None:
+        """Report the state whichever way it changed: button, Ctrl+B, toolbar entry, close box."""
+        self.statusBar().showMessage("侧栏已展开" if visible else "侧栏已收起")
+        if self._outline_action is not None:
+            self._outline_action.setChecked(visible)
+
+    def _rebuild_outline(self) -> None:
+        """Rebuild the tree for the loaded document; heading levels nest the rows."""
+        tree = self._outline
+        if tree is None:  # pragma: no cover - the dock exists before any document loads
+            return
+        tree.clear()
+        open_levels: list[tuple[int, QTreeWidgetItem]] = []
+        for entry in self.session.toc:
+            node = QTreeWidgetItem([entry.label])
+            node.setData(0, Qt.ItemDataRole.UserRole, entry.card_id)
+            while open_levels and open_levels[-1][0] >= entry.level:
+                open_levels.pop()
+            if open_levels:
+                open_levels[-1][1].addChild(node)
+            else:
+                tree.addTopLevelItem(node)
+            open_levels.append((entry.level, node))
+        tree.expandAll()
+
+    def _on_outline_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        del column
+        card_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(card_id, str):
+            self._focus_card(card_id)
+
+    def _focus_card(self, card_id: CardId) -> bool:
+        """Unfold, center, highlight and report one card (FR-2.4 / F10).
+
+        One implementation for every "go to this card" caller — TOC lines (T-021) and the
+        outline panel (T-020) — so the two can never drift apart in behaviour.
+        """
+        unfolded = self.session.reveal(card_id)
+        item = self._items.get(card_id)
+        if item is None:  # pragma: no cover - callers pass ids from the current card tree
+            return False
+        self.scene.clearSelection()
+        item.setSelected(True)
+        self.view.centerOn(item.sceneBoundingRect().center())
+        note = f"（已展开 {unfolded} 层折叠祖先）" if unfolded else ""
+        self.statusBar().showMessage(shorten(f"已定位：{item.card.title}{note}"))
+        return True
+
     def _build_overlay(self) -> None:
         """Bottom-right buttons required by FR-4.5 and FR-5.1."""
         layout = QVBoxLayout(self._overlay)
@@ -323,13 +535,25 @@ class MainWindow(QMainWindow):
 
     def _connect(self) -> None:
         self.session.document_loaded.connect(self._rebuild_items)
+        self.session.document_loaded.connect(self._rebuild_outline)
+        self.session.document_loaded.connect(self._reset_search)
         self.session.cards_changed.connect(self._apply_geometry)
         self.session.status.connect(self._show_status)
         self.session.failed.connect(self._show_failure)
         self.view.zoom_changed.connect(self._on_zoom_changed)
+        for bar in (self.view.horizontalScrollBar(), self.view.verticalScrollBar()):
+            bar.valueChanged.connect(self._on_viewport_scrolled)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._show_context_menu)
         self._follow_the_system_scheme()
+
+    def _on_viewport_scrolled(self) -> None:
+        """Recompute the render queue once the scroll settles (T-031, NFR-3).
+
+        Debounced like the zoom path: a drag of the scrollbar fires hundreds of value changes,
+        and rebuilding the queue on each of them would thrash.
+        """
+        self._scroll_timer.start(SCROLL_QUEUE_DELAY_MS)
 
     # ------------------------------------------------------------------ documents
 
@@ -415,7 +639,14 @@ class MainWindow(QMainWindow):
             layout = self.session.layouts.get(card_id)
             if layout is None:
                 continue
-            item = CardItem(card, blocks, layout, palette=self._palette, toc=self._toc)
+            item = CardItem(
+                card,
+                blocks,
+                layout,
+                palette=self._palette,
+                toc=self._toc,
+                depth=len(document.tree.ancestors(card_id)),
+            )
             item.moved.connect(self._on_item_moved)
             item.link_clicked.connect(self._on_link_clicked)
             self._items[card_id] = item
@@ -426,26 +657,29 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- body images
 
     def _queue_body_images(self) -> None:
-        """Schedule offscreen renders for the math / mermaid cards (D14, R2).
+        """Schedule offscreen renders for the math / mermaid cards the user can see (D14, NFR-3).
 
-        Rendering is deferred one card per event-loop turn so the board stays responsive
-        and a first-time KaTeX/Mermaid render never blocks the window from appearing.
+        Rendering is deferred one card per event-loop turn so the board stays responsive and a
+        first-time KaTeX/Mermaid render never blocks the window from appearing. Since T-031 the
+        queue holds only what is *on screen* (plus half a screen of margin), nearest to the
+        viewport centre first, so a thousand-card document costs what its viewport costs.
         """
         document = self.session.document
         if document is None or self.session.over_limit:
-            # D-029: over the card limit the heavy path is skipped entirely — no queue, no
-            # pending badges, and the math/mermaid cards keep the text drawn from their
-            # source. This is also what keeps a 201+ card document interactive.
+            # D-029/D-040: past the card limit the heavy path is skipped entirely — no queue,
+            # no pending badges, and the math/mermaid cards keep the text drawn from their
+            # source. This is also what keeps an over-limit document interactive.
             return
         bucket = self._current_bucket()
         theme = self._theme.value
+        candidates = self._render_candidates_now()
+        self._render_candidates = set(candidates)
         pending = [
             card_id
-            for card_id, card in document.tree.cards.items()
-            if card_id in self._items
-            and needs_web_render(card)
-            and (card_id, bucket, theme) not in self._pixmaps
+            for card_id in candidates
+            if (card_id, bucket, theme) not in self._pixmaps
         ]
+        self._release_offscreen_pixmaps()
         if not pending:
             return
         self._image_queue = pending
@@ -454,6 +688,69 @@ class MainWindow(QMainWindow):
             if item is not None:
                 item.set_pending(True)  # D-022 item 4: progress is visible while rendering
         self._image_timer.start(0)
+
+    def _render_candidates_now(self) -> list[CardId]:
+        """The cards worth rasterizing right now, nearest to the viewport centre first.
+
+        A card qualifies when it needs a web render, is not hidden inside a folded ancestor,
+        is big enough on screen (T-031's floor) and intersects the viewport plus half a screen
+        of margin. Everything else stays in its text form, which is exactly NFR-3's "cards
+        outside the viewport are not rendered or degrade to a placeholder".
+        """
+        document = self.session.document
+        if document is None:  # pragma: no cover - callers check first
+            return []
+        area = self._render_area()
+        zoom = self.view.zoom_percent() / 100.0
+        centre = self.view.mapToScene(self.view.viewport().rect().center())
+        candidates: list[tuple[float, CardId]] = []
+        for card_id, card in document.tree.cards.items():
+            item = self._items.get(card_id)
+            if item is None or not needs_web_render(card) or self._is_hidden(card_id):
+                continue
+            if item.card_width * zoom < MIN_LEGIBLE_ON_SCREEN_WIDTH:
+                continue
+            bounds = item.sceneBoundingRect()
+            if not area.intersects(bounds):
+                continue
+            offset = bounds.center() - centre
+            candidates.append((offset.x() ** 2 + offset.y() ** 2, card_id))
+        candidates.sort(key=lambda pair: pair[0])
+        return [card_id for _, card_id in candidates]
+
+    def _render_area(self) -> QRectF:
+        """The visible scene rect grown by half a screen on each side (prefetch margin)."""
+        visible = self.view.mapToScene(self.view.viewport().rect()).boundingRect()
+        return visible.adjusted(
+            -visible.width() / 2.0,
+            -visible.height() / 2.0,
+            visible.width() / 2.0,
+            visible.height() / 2.0,
+        )
+
+    def _release_offscreen_pixmaps(self) -> None:
+        """Keep the in-memory rasters bounded by dropping cards that scrolled away (T-031).
+
+        Only rasters outside the render area are candidates, so a visible card never loses the
+        image it is showing; the PNG itself stays in the on-disk cache (T-017), so scrolling
+        back re-reads it instead of re-rendering.
+        """
+        if len(self._pixmaps) <= MAX_LIVE_PIXMAPS:
+            return
+        area = self._render_area()
+        for key in list(self._pixmaps):
+            if len(self._pixmaps) <= MAX_LIVE_PIXMAPS:
+                return
+            card_id = key[0]
+            item = self._items.get(card_id)
+            if item is not None and area.intersects(item.sceneBoundingRect()):
+                continue
+            del self._pixmaps[key]
+            if item is not None and not any(
+                stored[0] == card_id for stored in self._pixmaps
+            ):
+                item.set_image(None)
+
 
     def _current_bucket(self) -> float:
         """The render bucket for the current zoom; falls back to a 0.5 step."""
@@ -465,7 +762,11 @@ class MainWindow(QMainWindow):
         return round(scale * 2) / 2
 
     def _render_next_body(self) -> None:
-        """Render one queued card, then reschedule itself until the queue drains."""
+        """Render one queued card, then reschedule itself until the queue drains.
+
+        A card that scrolled out of the render area while it waited is dropped instead of
+        rasterized (T-031): the user cannot see it, and it may never be looked at.
+        """
         if not self._image_queue:
             return
         document = self.session.document
@@ -476,6 +777,11 @@ class MainWindow(QMainWindow):
         item = self._items.get(card_id)
         if card is None or item is None:
             self._image_timer.start(0)
+            return
+        if card_id not in self._render_candidates:
+            item.set_pending(False)
+            if self._image_queue:
+                self._image_timer.start(0)
             return
 
         renderer = self._renderer
@@ -553,26 +859,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"moved {item.card.title!r} to ({x:.0f}, {y:.0f})")
 
     def _on_link_clicked(self, source: object, anchor: str) -> None:
-        """Jump to the card a TOC line points at (FR-2.4, flow F10).
-
-        F10's order: unfold the folded ancestors so the card is really reachable, center it,
-        highlight it and say what happened. The canvas scale is deliberately left alone
-        ("视口平移，不改变 scale").
-        """
+        """Jump to the card a TOC line points at (FR-2.4, flow F10)."""
         label = source.card.title if isinstance(source, CardItem) else anchor
         target = resolve_anchor(self._toc, anchor)
         if target is None:
             self.statusBar().showMessage(shorten(f"{label}：目录项未找到对应标题卡"))
             return
-        unfolded = self.session.reveal(target)
-        item = self._items.get(target)
-        if item is None:  # pragma: no cover - the entry came from the same card tree
-            return
-        self.scene.clearSelection()
-        item.setSelected(True)
-        self.view.centerOn(item.sceneBoundingRect().center())
-        note = f"（已展开 {unfolded} 层折叠祖先）" if unfolded else ""
-        self.statusBar().showMessage(shorten(f"已定位：{item.card.title}{note}"))
+        self._focus_card(target)
 
     def _on_zoom_changed(self, percent: float) -> None:
         if self._zoom_box is not None:

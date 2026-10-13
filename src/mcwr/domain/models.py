@@ -19,13 +19,13 @@ CardId = str
 
 SNAPSHOT_SCHEMA_VERSION: Final[int] = 1
 
-MAX_CARDS: Final[int] = 200
-"""Largest document we lay out with rich content (decision D-023).
+MAX_CARDS: Final[int] = 1000
+"""Largest document we lay out with rich content (D-023 value, raised by D-040).
 
 A document with more cards is still opened, but the offscreen math/diagram rendering is
-switched off and those cards keep their source text (decision D-029): the browser path is
-the heaviest thing in the application, so dropping it is what keeps a 201+ card document
-interactive instead of turning it into a stall.
+switched off and those cards keep their source text (decision D-029). The value was 200 while
+every math/Mermaid card in the document was rasterized on open; since viewport lazy loading
+(D-040, NFR-3) only what is on screen is rendered, a much larger document stays comfortable.
 """
 
 TOC_ENTRIES_ATTR: Final[str] = "toc_entries"

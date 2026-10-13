@@ -112,6 +112,13 @@ _VIEW_HEIGHT: Final[int] = 1024
 """Viewport of the one hidden view. Large enough that the stage never reflows."""
 _MAX_RASTER_EDGE: Final[int] = 8000
 """Ceiling for a raster edge; a request above it is stepped down to the nearest bucket."""
+MAX_CACHE_ENTRIES: Final[int] = 1024
+"""How many files the render cache may hold before the least recently used ones go (T-017).
+
+The user's value (2026-10-12). Every file in the cache directory counts, so the stale
+``_shell-<digest>.html`` copies that E-021 left behind are collected as well; the current
+shell and the work-in-progress ``_page.pdf`` are exempt because a render needs them.
+"""
 _UNIFORM_RANGE: Final[int] = 24
 """Per-channel spread below which an image counts as one flat colour, i.e. blank."""
 _BLANK_SCAN_STEP: Final[int] = 4
@@ -288,15 +295,23 @@ class QtWebCardRenderer:
         *,
         bucket_step: float = 0.5,
         timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        max_cache_entries: int = MAX_CACHE_ENTRIES,
     ) -> None:
         self.assets_root = Path(assets_root)
         self.cache_dir = Path(cache_dir)
         self.bucket_step = max(float(bucket_step), _MIN_BUCKET_STEP)
         self.timeout_ms = max(int(timeout_ms), 1)
+        self.max_cache_entries = max(int(max_cache_entries), 1)
         self.failures: list[str] = []
         """Every failure reason in order; the GUI reads the last one for its warning."""
         self.last_error: str | None = None
-        self.stats: dict[str, int] = {"rendered": 0, "cache_hits": 0, "failed": 0, "retried": 0}
+        self.stats: dict[str, int] = {
+            "rendered": 0,
+            "cache_hits": 0,
+            "failed": 0,
+            "retried": 0,
+            "evicted": 0,
+        }
         """Observable cache/render counters: ``rendered`` never counts a cache hit."""
         self._app: QApplication | None = None
         self._holder: QWidget | None = None
@@ -357,6 +372,7 @@ class QtWebCardRenderer:
         cached = self._load_cached(path)
         if cached is not None:
             self.stats["cache_hits"] += 1
+            _touch(cached)
             return cached
         missing = self._missing_assets()
         if missing:
@@ -788,7 +804,45 @@ class QtWebCardRenderer:
         except OSError as exc:
             return self._fail(f"cache write failed: {exc}")
         self.stats["rendered"] += 1
+        self._prune_cache()
         return path
+
+    def _prune_cache(self) -> None:
+        """Keep the cache directory bounded: drop the least recently used files (T-017).
+
+        Everything in the directory counts — rasters, every ``_shell-<digest>.html`` a previous
+        build wrote (ERRORS.md E-021) and the legacy ``_shell.html`` — but the two entries a
+        render is using right now, the *current* shell and ``_page.pdf``, are never candidates.
+        Recency is the file's mtime; a cache hit refreshes it (``_touch``), so what is actually
+        read survives while dead rasters age out.
+
+        Never raises: this runs inside the render path, where the port promises to degrade
+        instead of failing, and another window (its own process, same directory) may have
+        removed a file between the listing and the unlink.
+        """
+        try:
+            entries = [path for path in self.cache_dir.iterdir() if path.is_file()]
+        except OSError:  # pragma: no cover - no cache directory yet, or not readable
+            return
+        if len(entries) <= self.max_cache_entries:
+            return
+        exempt = self._exempt_from_pruning()
+        candidates = sorted(
+            (path for path in entries if path not in exempt), key=_mtime, reverse=False
+        )
+        for path in candidates[: len(entries) - self.max_cache_entries]:
+            try:
+                path.unlink()
+            except OSError:  # pragma: no cover - another process got there first
+                continue
+            self.stats["evicted"] += 1
+
+    def _exempt_from_pruning(self) -> set[Path]:
+        """The files a render needs right now: the active shell and the working PDF."""
+        exempt = {self.cache_dir / _PDF_NAME}
+        if self._shell_path is not None:
+            exempt.add(self._shell_path)
+        return exempt
 
     def _fail(self, reason: str) -> Path | None:
         self.last_error = reason
@@ -833,6 +887,22 @@ class QtWebCardRenderer:
         shell.write_text(html, encoding="utf-8")
         self._shell_path = shell
         return shell
+
+
+def _mtime(path: Path) -> float:
+    """Modification time used for LRU ordering; an unreadable file sorts first (oldest)."""
+    try:
+        return path.stat().st_mtime
+    except OSError:  # pragma: no cover - a file that vanished mid-listing
+        return 0.0
+
+
+def _touch(path: Path) -> None:
+    """Mark a cache file as used now, so LRU eviction keeps what is actually read."""
+    try:
+        os.utime(path, None)
+    except OSError:  # pragma: no cover - a file we cannot touch is still readable
+        return
 
 
 def _shell_file_name(html: str) -> str:

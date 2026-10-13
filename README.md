@@ -19,8 +19,11 @@
 | 十项验收标准 | ✅ | tests/integration/test_acceptance.py（逐条对应 §1.5） |
 | 公式 / Mermaid 离屏渲染（D14） | ✅ | 46 项渲染测试；App 内实测数学卡出 `E = mc²`、Mermaid 卡出流程图；打包后自检 `rendered_images=2/2` |
 | 视觉规范 + 双主题（跟随系统/浅色/深色） | ✅ | docs/visual-spec.md（取值唯一来源）+ `interfaces/gui/theme.py`；`tests/integration/test_theme_switch.py` 6 项（切换不动任何布局字段）、深色真实位图像素断言 |
-| 200 卡片上限与超限降级（D-023/D-029） | ✅ | 201 卡合成文档实测打开 0.03–0.05 s；`tests/integration/test_card_limit.py` 4 项：超限后零离屏渲染、公式按原文绘制、状态栏与日志各一次提示 |
+| 视口懒加载 + 规模上限 1000（D-040/T-031，NFR-3） | ✅ | 只渲染视口（外扩半屏）内、屏上宽度 ≥ 160 px、未被折叠祖先隐藏的公式/Mermaid 卡；滚动 180 ms / 缩放 400 ms 防抖重算，最近的先渲；1000 卡与 1001 卡合成文档实测打开 **0.31 s / 0.28 s**（预算 ≤ 5 s）；1001 张起走降级（停止离屏渲染、公式按原文显示、一次提示） |
+| 超限降级（D-029） | ✅ | 超限后零离屏渲染、公式按原文绘制、状态栏与日志各一次提示；`tests/integration/test_card_limit.py` 4 项 |
 | 目录卡片点击跳转（FR-2.4） | ✅ | `[TOC]` 处生成可点击条目（全部 H1–H6）；`tests/integration/test_toc_navigation.py` 5 项：真点击 → 目标卡居中并高亮、折叠祖先逐级展开、链接点击不拖动卡片 |
+| 代码卡语法高亮（T-029） | ✅ | Pygments（浅 `default` / 深 `monokai`）随主题切换；任一 token 颜色对代码底 <4.5:1 时回退到该主题 `text_secondary`；`pygments_highlighter.py` 8 项 + `test_code_highlight.py` 3 项（像素颜色数断言） |
+| 代码卡语法高亮（T-029） | ✅ | Pygments（浅 `default` / 深 `monokai`）随主题切换；任一 token 颜色对代码底 <4.5:1 时回退到该主题 `text_secondary`；`pygments_highlighter.py` 8 项 + `test_code_highlight.py` 3 项（像素颜色数断言） |
 | 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行

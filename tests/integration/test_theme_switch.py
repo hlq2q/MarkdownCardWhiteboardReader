@@ -41,17 +41,39 @@ class RecordingRenderer:
         return None
 
 
-def _drain(window: MainWindow) -> None:
-    """Run the deferred render queue to completion, or fail instead of hanging."""
+def _drain(window: MainWindow, *, minimum_seconds: float = 0.6) -> None:
+    """Run the deferred render queue to completion, or fail instead of hanging.
+
+    Since T-031 the queue is debounced (zoom 400 ms, scroll 180 ms) and viewport-bound, so a
+    drain that only spins the event loop would return before anything was queued.
+    """
     app = QApplication.instance()
     assert app is not None
-    deadline = time.monotonic() + 10.0
+    started = time.monotonic()
+    deadline = started + 10.0
     while time.monotonic() < deadline:
         app.processEvents()
-        if not any(item.is_pending for item in window.card_items.values()):
+        if time.monotonic() - started >= minimum_seconds and not any(
+            item.is_pending for item in window.card_items.values()
+        ):
             return
         time.sleep(0.01)
     raise AssertionError("the body render queue never drained")
+
+
+def _focus_a_rich_card(window: MainWindow) -> None:
+    """Put the viewport on a math/mermaid card at 100% (T-031: only visible cards render)."""
+    from mcwr.application.features.render_card.service import needs_web_render
+
+    document = window.session.document
+    assert document is not None
+    window.show()
+    window.view.set_zoom(100.0)
+    for card_id, card in document.tree.cards.items():
+        if needs_web_render(card) and card_id in window.card_items:
+            window.view.centerOn(window.card_items[card_id].sceneBoundingRect().center())
+            return
+    raise AssertionError("the sample has no math/mermaid card")
 
 
 def _layout_snapshot(window: MainWindow) -> dict[str, dict[str, object]]:
@@ -146,6 +168,7 @@ def test_switching_the_theme_re_renders_the_rich_cards_in_the_new_theme() -> Non
     renderer = RecordingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]
     assert window.open_path(SAMPLE) is True
+    _focus_a_rich_card(window)
     _drain(window)
     assert {theme for _, theme in renderer.calls} == {"light"}
 

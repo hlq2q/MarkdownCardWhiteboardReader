@@ -12,17 +12,20 @@ from mcwr.domain.enums import CardKind
 from mcwr.interfaces.gui.theme import (
     DARK,
     FONT_PX,
+    LEVEL_BAR_TIERS,
+    LEVEL_BAR_WIDTH,
     LIGHT,
     PALETTES,
     Theme,
     ThemeMode,
     card_fill,
-    contrast_ratio,
+    level_bar_colour,
     palette_for,
     points,
     resolve_theme,
     uses_shadow,
 )
+from mcwr.shared.contrast import MIN_RATIO_AA, MIN_RATIO_NON_TEXT, contrast_ratio
 
 SLOTS = (
     "app_bg",
@@ -72,22 +75,22 @@ def test_body_text_clears_wcag_aa_on_every_content_background() -> None:
     for palette in PALETTES.values():
         for slot in TEXT_SLOTS:
             ratio = contrast_ratio(palette.text_primary, getattr(palette, slot))
-            assert ratio >= 4.5, (palette.theme, slot, round(ratio, 2))
+            assert ratio >= MIN_RATIO_AA, (palette.theme, slot, round(ratio, 2))
 
 
 def test_secondary_text_links_and_errors_clear_wcag_aa() -> None:
     for palette in PALETTES.values():
-        assert contrast_ratio(palette.text_secondary, palette.card_bg) >= 4.5
-        assert contrast_ratio(palette.link, palette.card_bg) >= 4.5
-        assert contrast_ratio(palette.link, palette.code_bg) >= 4.5
-        assert contrast_ratio(palette.error_text, palette.error_bg) >= 4.5
+        assert contrast_ratio(palette.text_secondary, palette.card_bg) >= MIN_RATIO_AA
+        assert contrast_ratio(palette.link, palette.card_bg) >= MIN_RATIO_AA
+        assert contrast_ratio(palette.link, palette.code_bg) >= MIN_RATIO_AA
+        assert contrast_ratio(palette.error_text, palette.error_bg) >= MIN_RATIO_AA
 
 
 def test_the_card_edge_and_the_selection_stay_recognisable_at_three_to_one() -> None:
     """"Clear but not harsh" (D-021) has a number: the edge clears 3:1, the fill only 1.2:1."""
     for palette in PALETTES.values():
-        assert contrast_ratio(palette.card_edge, palette.card_bg) >= 3.0
-        assert contrast_ratio(palette.selected, palette.card_bg) >= 3.0
+        assert contrast_ratio(palette.card_edge, palette.card_bg) >= MIN_RATIO_NON_TEXT
+        assert contrast_ratio(palette.selected, palette.card_bg) >= MIN_RATIO_NON_TEXT
         assert contrast_ratio(palette.card_bg, palette.board_bg) >= 1.2
 
 
@@ -129,6 +132,37 @@ def test_card_fill_follows_the_spec_per_kind() -> None:
 def test_only_the_light_theme_draws_shadows() -> None:
     assert uses_shadow(Theme.LIGHT) is True
     assert uses_shadow(Theme.DARK) is False
+
+
+def test_each_theme_pins_a_pygments_style() -> None:
+    """T-029: the highlighter style is a palette slot, so it follows the theme."""
+    assert LIGHT.pygments_style == "default"
+    assert DARK.pygments_style == "monokai"
+
+
+def test_the_depth_bar_uses_the_four_values_the_user_gave() -> None:
+    """T-028 / visual spec §6.1: the values are pinned, not merely 'different'."""
+    assert LIGHT.level_bar == ("#D0D7DE", "#AFB8C1", "#8C959F", "#6E7781")
+    assert DARK.level_bar == ("#30363D", "#484F58", "#6E7681", "#8B949E")
+    assert LIGHT.level_bar != DARK.level_bar
+    for palette in (LIGHT, DARK):
+        for tier in palette.level_bar:
+            assert len(tier) == 7 and tier.startswith("#") and tier[1:] == tier[1:].upper()
+
+
+def test_level_bar_colour_clamps_from_the_fourth_level_on() -> None:
+    for palette in (LIGHT, DARK):
+        assert level_bar_colour(palette, 0) == palette.level_bar[0]
+        assert level_bar_colour(palette, 2) == palette.level_bar[2]
+        assert level_bar_colour(palette, 3) == palette.level_bar[3]
+        assert level_bar_colour(palette, 4) == palette.level_bar[3], "5th level reuses tier 4"
+        assert level_bar_colour(palette, 99) == palette.level_bar[3]
+        assert level_bar_colour(palette, -3) == palette.level_bar[0], "negative depth clamps"
+
+
+def test_the_depth_bar_is_three_pixels_wide_and_has_four_tiers() -> None:
+    assert LEVEL_BAR_WIDTH == 3.0
+    assert LEVEL_BAR_TIERS == 4
 
 
 def test_the_spec_pixel_sizes_convert_to_qt_points() -> None:

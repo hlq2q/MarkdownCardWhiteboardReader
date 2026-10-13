@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+from typing import Final
+
 from PySide6.QtCore import QLineF, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QTransform, QWheelEvent
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
 
 from mcwr.domain.models import Viewport
 from mcwr.interfaces.gui.theme import GRID_ALPHA, GRID_STEP, LIGHT, Palette
+
+MIN_GRID_DEVICE_STEP: Final[float] = 8.0
+"""Grid spacing (device px) below which the grid is not drawn at all (T-033).
+
+A different quantity from ``theme.MIN_LEGIBLE_ON_SCREEN_WIDTH`` on purpose: that one is a card
+width in logical px, this one the on-screen distance between two grid lines. With
+``GRID_STEP = 40`` scene units the grid is skipped at 20 % zoom and below — the whole overview
+range, where a 4 px mesh reads as a tint and costs more than everything else in the frame —
+while every zoom from 25 % up keeps exactly the grid it had before.
+"""
 
 
 class BoardScene(QGraphicsScene):
@@ -37,7 +49,19 @@ class BoardScene(QGraphicsScene):
         self.update()
 
     def drawBackground(self, painter: QPainter, rect: QRectF | QRect) -> None:
+        """Fill the canvas and draw the orientation grid — unless the grid is below the floor.
+
+        The exposed ``rect`` arrives in *scene* coordinates, so at a small zoom it is enormous
+        (at 10 % a 1400x900 window exposes ~11240x8460 units) and a 24-unit grid means hundreds
+        of scene-long antialiased lines. Measured on a 1000-card board: that background cost
+        ~40 ms of a 46 ms frame — more than every visible card together (T-033, and the reason
+        the card-painting hypothesis was wrong). Below ``MIN_GRID_DEVICE_STEP`` the grid is a
+        flat tint nobody can read, so it is skipped; the fill still happens, and the bounding
+        rule also caps the line count at viewport_px / floor.
+        """
         super().drawBackground(painter, rect)
+        if GRID_STEP * abs(painter.transform().m11()) < MIN_GRID_DEVICE_STEP:
+            return
         rect = QRectF(rect)
         left = rect.left() - (rect.left() % GRID_STEP)
         top = rect.top() - (rect.top() % GRID_STEP)

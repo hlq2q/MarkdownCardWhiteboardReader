@@ -11,6 +11,7 @@ from mcwr.application.features.render_card.service import (
     WEB_RENDER_KINDS,
     card_image,
     needs_web_render,
+    strip_fenced_block,
     web_source,
 )
 from mcwr.domain.enums import BlockKind, CardKind
@@ -221,3 +222,41 @@ def test_the_fake_satisfies_the_port() -> None:
     """The port is structural: a plain object with the right signature is a renderer."""
     renderer: WebCardRenderer = FakeWebRenderer(None)
     assert renderer.render(kind=CardKind.MATH_BLOCK, source="x", scale=1.0) is None
+
+
+# ------------------------------------------------------------- fence stripping (T-029)
+
+
+def test_a_code_fence_is_stripped_with_its_info_string() -> None:
+    assert strip_fenced_block("```python\nx = 1\n```") == "x = 1"
+
+
+def test_a_tilde_fence_is_stripped_too() -> None:
+    assert strip_fenced_block("~~~mermaid\ngraph TD; A-->B;\n~~~") == "graph TD; A-->B;"
+
+
+def test_a_body_without_a_fence_is_only_trimmed() -> None:
+    assert strip_fenced_block("  plain body  \n") == "plain body"
+
+
+def test_a_lonely_fence_is_not_treated_as_a_pair() -> None:
+    assert strip_fenced_block("```") == "```"
+
+
+def test_the_mermaid_helper_keeps_working_through_the_shared_one() -> None:
+    """The Mermaid path predates this helper; it must keep its behaviour (T-029 refactor)."""
+    from mcwr.application.features.render_card.service import _strip_mermaid_fence
+
+    assert _strip_mermaid_fence("```mermaid\ngraph TD;\n```") == "graph TD;"
+
+
+def test_card_image_renders_the_bare_body_not_the_fence() -> None:
+    """The renderer must never see the fence: it would draw it as content (E-022)."""
+    blocks = {0: _block(0, BlockKind.MATH_BLOCK, "$$\na+b\n$$")}
+    renderer = FakeWebRenderer(Path("x.png"))
+    card_image(_card(CardKind.MATH_BLOCK), blocks, renderer=renderer, scale=1.0)
+    assert renderer.calls == [(CardKind.MATH_BLOCK, "a+b", 1.0)]
+
+    code_blocks = {0: _block(0, BlockKind.CODE, "```python\nprint(1)\n```", lang="python")}
+    stripped = strip_fenced_block(code_blocks[0].raw_text)
+    assert stripped == "print(1)"
