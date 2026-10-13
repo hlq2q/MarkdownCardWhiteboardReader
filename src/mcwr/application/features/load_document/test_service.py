@@ -80,12 +80,12 @@ def test_loads_a_tree_and_carries_warnings(tmp_path: Path) -> None:
     assert loaded.blocks == blocks
 
 
-def test_dividers_produce_several_big_sections(tmp_path: Path) -> None:
+def test_dividers_do_not_add_cards(tmp_path: Path) -> None:
     blocks = (heading(0, "A", 1), divider(1), heading(2, "B", 1))
     loaded = load_document(tmp_path / "doc.md", reader=FakeReader("x"), parser=FakeParser(blocks))
     assert len(loaded.tree.root_ids) == 2
     titles = [loaded.tree.cards[root].title for root in loaded.tree.root_ids]
-    assert titles == ["Section 1", "Section 2"]
+    assert titles == ["A", "B"]
 
 
 def test_content_edit_changes_hash_but_not_card_ids(tmp_path: Path) -> None:
@@ -123,18 +123,18 @@ def _load(tmp_path: Path, headings: int) -> LoadedDocument:
     )
 
 
-def test_the_product_limit_is_two_hundred_cards() -> None:
-    """Pins the D-023 value; a change here must be a deliberate decision, not a drift."""
-    assert MAX_CARDS == 200
+def test_the_product_limit_is_the_value_the_user_set() -> None:
+    """Pins the value; a change here must be a deliberate decision, not a drift."""
+    assert MAX_CARDS == 1000
 
 
 def test_a_document_at_the_limit_is_not_flagged(tmp_path: Path) -> None:
-    loaded = _load(tmp_path, MAX_CARDS - 1)  # + the implicit big-section card = 200
+    loaded = _load(tmp_path, MAX_CARDS)  # no wrapper card counts towards the limit any more
     assert loaded.card_count == MAX_CARDS
     assert loaded.over_limit is False
 
 
 def test_one_card_more_than_the_limit_is_flagged(tmp_path: Path) -> None:
-    loaded = _load(tmp_path, MAX_CARDS)  # 201 cards
+    loaded = _load(tmp_path, MAX_CARDS + 1)
     assert loaded.card_count == MAX_CARDS + 1
     assert loaded.over_limit is True

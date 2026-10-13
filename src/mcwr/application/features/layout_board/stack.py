@@ -226,7 +226,3 @@ def hug_all(tree: CardTree, layouts: MutableMapping[CardId, CardLayout]) -> bool
         if hug_children(tree, layouts, card_id):
             moved = True
     return moved
-
-
-
-

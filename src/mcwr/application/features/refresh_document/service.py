@@ -230,8 +230,6 @@ def _plan_relocations(
     candidates: dict[tuple[CardKind, str], list[CardId]] = {}
     for new_id in order:
         card = new_tree.cards[new_id]
-        if card.kind is CardKind.BIG_SECTION:
-            continue
         if new_id in taken:
             candidates.setdefault((card.kind, card.content_hash), []).append(new_id)
 

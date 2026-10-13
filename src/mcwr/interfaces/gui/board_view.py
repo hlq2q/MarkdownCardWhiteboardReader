@@ -117,6 +117,9 @@ class BoardView(QGraphicsView):
         self._panning = False
         self._pan_origin = QPointF()
         self._view_drag: tuple[CardItem, QPointF, QPointF] | None = None
+        self._marquee_selection = False
+        self._marquee_dragged = False
+        self._menu_suppressed = False
 
     # ----------------------------------------------------------------------- zoom
 

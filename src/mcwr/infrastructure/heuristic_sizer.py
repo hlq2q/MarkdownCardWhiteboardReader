@@ -20,7 +20,6 @@ _EXTRA_HEIGHT: dict[CardKind, float] = {
     CardKind.TOC: 8.0,
     CardKind.FALLBACK_TEXT: 0.0,
     CardKind.HEADING: 0.0,
-    CardKind.BIG_SECTION: 0.0,
 }
 
 

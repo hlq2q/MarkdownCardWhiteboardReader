@@ -86,7 +86,7 @@ class _Placer:
         """Place ``card_id`` and its subtree, returning the card's height."""
         card = self._tree.cards[card_id]
         inner_width = max(width - 2 * self._options.padding, _MIN_INNER_WIDTH)
-        header = 0.0 if card.is_big_section else self._options.header_height
+        header = self._options.header_height
         body = self._estimator.estimate_height(card, blocks=self._blocks, width=inner_width)
         if card.child_ids and not _has_own_body(card, self._blocks):
             # A heading with nothing but child cards under it needs no empty body line: the children

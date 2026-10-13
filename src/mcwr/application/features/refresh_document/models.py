@@ -22,7 +22,7 @@ class StructureSignature:
 
     ``top_cards`` counts the big-section cards (the roots) and ``heading_levels``
     lists the level of every heading card in document order; ``part_count`` counts the
-    big sections plus the headings, so two signatures can never collide by accident
+    top-level cards plus the headings, so two signatures can never collide by accident
     (``(1, (2,))`` and ``(2, ())`` describe different trees).
     """
 
@@ -32,7 +32,7 @@ class StructureSignature:
 
     @property
     def parts(self) -> tuple[SignaturePart, ...]:
-        """The signature as one comparable sequence: big sections first, then levels."""
+        """The signature as one comparable sequence: top-level cards first, then levels."""
         return (self.top_cards, *self.heading_levels)
 
 

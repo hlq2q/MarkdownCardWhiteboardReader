@@ -62,7 +62,7 @@ def _card(
 
 def board() -> tuple[CardTree, dict[str, CardLayout]]:
     cards = {
-        "S": _card("S", None, ("G", "H"), kind=CardKind.BIG_SECTION),
+        "S": _card("S", None, ("G", "H")),
         "G": _card("G", "S", ("P",)),
         "H": _card("H", "S", (), ordinal=1),
         "P": _card("P", "G", ("A", "B")),
@@ -120,21 +120,21 @@ def test_resolve_overlaps_leaves_a_clear_column_alone() -> None:
     assert _face(layouts) == before
 
 
-def test_the_dropped_card_wins_the_tie_and_the_other_moves_down() -> None:
-    """B dropped on A's head must end up above A (the user's rule)."""
+def test_a_tie_on_the_top_edge_keeps_document_order() -> None:
+    """No card "wins" a tie any more (the dropped card is gone): A comes first, so A stays."""
     tree, layouts = board()
     top = layouts["A"].y
     layouts["B"].y = top
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="B") is True
-    assert layouts["B"].y == top
-    assert layouts["A"].y == top + ROW + GAP
+    assert resolve_overlaps(tree, layouts, parent="P") is True
+    assert layouts["A"].y == top
+    assert layouts["B"].y == top + ROW + GAP
 
 
-def test_the_same_rule_mirrors_when_a_is_the_one_dropped() -> None:
+def test_the_same_rule_mirrors_when_b_is_first() -> None:
     tree, layouts = board()
     top = layouts["B"].y
     layouts["A"].y = top
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="A") is True
+    assert resolve_overlaps(tree, layouts, parent="P") is True
     assert layouts["A"].y == top
     assert layouts["B"].y == top + ROW + GAP
 
@@ -144,7 +144,7 @@ def test_a_card_dropped_back_into_its_own_slot_does_not_grow_the_boxes() -> None
     tree, layouts = board()
     before = _face(layouts)
     layouts["B"].y = layouts["A"].y
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="B") is True
+    assert resolve_overlaps(tree, layouts, parent="P") is True
     assert layouts["P"].height == before["P"][1]
     assert layouts["G"].height == before["G"][1]
     assert layouts["S"].height == before["S"][1]
@@ -156,7 +156,7 @@ def test_a_stack_that_sticks_out_grows_the_boxes_and_pushes_the_cards_below() ->
     tree, layouts = board()
     before = _face(layouts)
     layouts["A"].y = layouts["B"].y
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="A") is True
+    assert resolve_overlaps(tree, layouts, parent="P") is True
     grown = ROW + GAP  # one row plus the sibling gap
     assert layouts["P"].height == before["P"][1] + grown
     assert layouts["G"].height == before["G"][1] + grown
@@ -170,7 +170,7 @@ def test_free_cards_may_sit_on_each_other() -> None:
     layouts["A"].detached = True
     layouts["B"].detached = True
     layouts["B"].y = layouts["A"].y
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="B") is False
+    assert resolve_overlaps(tree, layouts, parent="P") is False
     assert layouts["B"].y == layouts["A"].y
 
 
@@ -178,7 +178,7 @@ def test_a_folded_parent_keeps_its_hidden_children_where_they_are() -> None:
     tree, layouts = board()
     layouts["P"].collapsed = True
     layouts["B"].y = layouts["A"].y
-    assert resolve_overlaps(tree, layouts, parent="P", dropped="B") is False
+    assert resolve_overlaps(tree, layouts, parent="P") is False
 
 
 def test_a_folded_box_does_not_follow_its_hidden_children() -> None:

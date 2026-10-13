@@ -168,7 +168,7 @@ MAJOR_CASES = (
 NOT_MAJOR_CASES = (
     _Case("content edited", build(BASE), build(EDITED)),
     _Case("card added inside a heading", build(BASE), build(EXTENDED)),
-    _Case("card added to a big section", build(BASE), build(FIRST_SECTION_ONLY)),
+    _Case("card added at the top level", build(BASE), build(FIRST_SECTION_ONLY)),
     _Case("card removed", build(CARD_REMOVED), build(BASE)),
     _Case("card added among siblings", build(BASE), build(CARD_ADDED_AMONG_SIBLINGS)),
     _Case("heading renamed", build(BASE), build(RENAMED_HEADING)),
@@ -248,7 +248,7 @@ def test_major_warnings_report_both_reasons() -> None:
     new = build([*DIVIDER_ADDED, heading(4, "Deep", 4)])
     warnings = major_change_warnings(old, new)
     assert len(warnings) == 2
-    assert "big sections" in warnings[0]
+    assert "top-level cards" in warnings[0]
     assert "heading levels" in warnings[1]
 
 
@@ -625,16 +625,14 @@ def test_content_hash_fallback_never_matches_across_card_kinds() -> None:
     assert_partition(mapping, old, new)
 
 
-def test_a_big_section_never_absorbs_a_deleted_card_layout() -> None:
-    """The container's hash is derived from its content, so it must not be a candidate."""
+def test_a_content_derived_card_never_absorbs_a_deleted_card_layout() -> None:
+    """With no container left, a card whose hash matches nothing is added, not paired."""
     old = build(CODE_ONLY)
     new = build([para(0, "same text")])
-    new_section = new.cards[new.root_ids[0]]
-    assert new_section.content_hash == titled(old, "python").content_hash
+    loose = new.cards[new.root_ids[0]]
 
     mapping = match_cards(old, new)
-    assert mapping.kept == {new_section.card_id: new_section.card_id}
-    assert mapping.added == ()
+    assert mapping.added == (loose.card_id,)
     assert mapping.removed == (titled(old, "python").card_id,)
     assert_partition(mapping, old, new)
 

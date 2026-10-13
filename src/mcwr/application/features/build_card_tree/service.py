@@ -1,4 +1,7 @@
-"""Card-tree construction: blocks (IR) -> big sections -> heading nesting (spec §2.3)."""
+"""Card-tree construction: blocks (IR) -> heading nesting (spec §2.3, D-056).
+
+A top-level heading is a root, content before the first heading becomes a card of its own, and a
+thematic break only separates -- there is no section wrapper card any more (T-055)."""
 
 from __future__ import annotations
 
@@ -38,27 +41,9 @@ class _Node:
     title: str = ""
 
 
-def _split_sections(blocks: Sequence[Block]) -> list[list[Block]]:
-    """Split at thematic breaks; consecutive dividers never produce an empty section."""
-    sections: list[list[Block]] = []
-    current: list[Block] = []
-    for block in blocks:
-        if block.kind is BlockKind.THEMATIC_BREAK:
-            if current:
-                sections.append(current)
-                current = []
-            continue
-        current.append(block)
-    if current:
-        sections.append(current)
-    return sections
-
-
 def _title_for(node: _Node, block: Block | None) -> str:
     if node.kind is CardKind.HEADING:
         return node.heading_text
-    if node.kind is CardKind.BIG_SECTION:
-        return node.title
     if node.kind is CardKind.CODE and block is not None and block.lang:
         return block.lang
     if node.kind is CardKind.IMAGE and block is not None:
@@ -89,6 +74,19 @@ class _Builder:
         parent.children.append(child_index)
         return child_index
 
+    def attach_root(self, node: _Node) -> int:
+        """Append ``node`` as a root, with exactly the ordinal/occurrence rules ``attach`` uses.
+
+        The roots are siblings like any others, which is what keeps a heading card's stable id the
+        same as it was when a section wrapper stood above it (T-055).
+        """
+        node.parent = None
+        node.ordinal_in_parent = len(self.roots)
+        node.occurrence = sum(1 for root in self.roots if _same_identity(self.nodes[root], node))
+        index = self.add(node)
+        self.roots.append(index)
+        return index
+
 
 def _same_identity(left: _Node, right: _Node) -> bool:
     """Siblings are the "same" for occurrence counting only when they collide by name."""
@@ -99,14 +97,18 @@ def _same_identity(left: _Node, right: _Node) -> bool:
     return left.heading_path == right.heading_path
 
 
-def _section_node(ordinal: int) -> _Node:
+def _loose_node(block: Block, card_kind: CardKind = CardKind.FALLBACK_TEXT) -> _Node:
+    """A card for content that stands outside any heading (it used to belong to a section).
+
+    The block only supplies the card's identity: the walk appends every block it owns, so filling the
+    lists here would claim it twice.
+    """
     return _Node(
-        kind=CardKind.BIG_SECTION,
+        kind=card_kind,
         level=None,
         heading_text="",
         heading_path=(),
-        ordinal_in_parent=ordinal,
-        title=f"Section {ordinal + 1}",
+        primary_block=block.index,
     )
 
 
@@ -122,29 +124,39 @@ def _card_node(block: Block, card_kind: CardKind, parent: _Node) -> _Node:
     )
 
 
-def _heading_node(block: Block, level: int, parent: _Node) -> _Node:
+def _heading_node(block: Block, level: int, parent: _Node | None) -> _Node:
     text = block.text_normalized or f"H{level}"
     return _Node(
         kind=CardKind.HEADING,
         level=level,
         heading_text=text,
-        heading_path=(*parent.heading_path, text),
+        heading_path=(*parent.heading_path, text) if parent is not None else (text,),
         primary_block=block.index,
         blocks=[block.index],
         raw_parts=[block.raw_text],
     )
 
 
-def _build_section(builder: _Builder, blocks: Sequence[Block], ordinal: int) -> None:
-    """Build one big section and everything nested inside it."""
-    section_index = builder.add(_section_node(ordinal))
-    builder.roots.append(section_index)
-    stack: list[int] = [section_index]
+def _build_cards(builder: _Builder, blocks: Sequence[Block]) -> None:
+    """Walk the document once: an empty stack means the next heading is a root (T-055/D-056).
+
+    Content seen while no heading is open becomes a card of its own rather than being owned by a
+    synthetic section, and a thematic break is skipped entirely: it only separates.
+    """
+    stack: list[int] = []
+    loose_index: int | None = None
 
     for block in blocks:
+        if block.kind is BlockKind.THEMATIC_BREAK:
+            continue
         role = role_of(block.kind)
         if role is BlockRole.CONTENT:
-            owner = builder.nodes[stack[-1]]
+            if stack:
+                owner = builder.nodes[stack[-1]]
+            else:
+                if loose_index is None:
+                    loose_index = builder.attach_root(_loose_node(block))
+                owner = builder.nodes[loose_index]
             owner.blocks.append(block.index)
             owner.raw_parts.append(block.raw_text)
             continue
@@ -154,15 +166,22 @@ def _build_section(builder: _Builder, blocks: Sequence[Block], ordinal: int) -> 
         if card_kind is None:  # pragma: no cover - role_of already gates this
             continue
         if card_kind is not CardKind.HEADING:
-            owner = builder.nodes[stack[-1]]
-            builder.attach(stack[-1], _card_node(block, card_kind, owner))
+            if stack:
+                owner = builder.nodes[stack[-1]]
+                builder.attach(stack[-1], _card_node(block, card_kind, owner))
+            else:
+                builder.attach_root(_loose_node(block, card_kind))
             continue
 
         level = block.level or 1
-        while len(stack) > 1 and (builder.nodes[stack[-1]].level or 7) >= level:
+        while stack and (builder.nodes[stack[-1]].level or 7) >= level:
             stack.pop()
-        parent = builder.nodes[stack[-1]]
-        stack.append(builder.attach(stack[-1], _heading_node(block, level, parent)))
+        if stack:
+            parent = builder.nodes[stack[-1]]
+            stack.append(builder.attach(stack[-1], _heading_node(block, level, parent)))
+        else:
+            stack.append(builder.attach_root(_heading_node(block, level, None)))
+        loose_index = None  # a new heading chain collects its own loose content
 
 
 def _materialize(
@@ -206,7 +225,6 @@ def build_card_tree(blocks: Sequence[Block], *, path_hash: str) -> CardTree:
     distinguishes documents; it never depends on content.
     """
     builder = _Builder()
-    for ordinal, section_blocks in enumerate(_split_sections(blocks)):
-        _build_section(builder, section_blocks, ordinal)
+    _build_cards(builder, blocks)
     cards, ids = _materialize(builder, path_hash, {block.index: block for block in blocks})
     return CardTree(cards=cards, root_ids=tuple(ids[index] for index in builder.roots))

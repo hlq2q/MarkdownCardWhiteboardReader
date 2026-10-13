@@ -203,8 +203,6 @@ def test_a_child_never_sits_on_its_parents_own_content(window: MainWindow) -> No
         if card.parent_id is None:
             continue
         parent = document.tree.cards[card.parent_id]
-        if parent.is_big_section:
-            continue  # a separator card has no header of its own
         child_y = _box(window, card_id)[1]
         parent_y = _box(window, parent.card_id)[1]
         assert child_y >= parent_y + HEADER_HEIGHT
@@ -248,7 +246,3 @@ def test_a_title_bar_press_on_a_frozen_child_moves_nothing(window: MainWindow) -
     _drag_card(window, "B", offset_y=10.0)
     assert _box(window, root_id) == before_root
     assert _box(window, _id(window, "B")) == before_child
-
-
-
-

@@ -26,15 +26,15 @@ def test_cards_json_runs_on_the_sample() -> None:
     assert result.exit_code == 0, output_of(result)
     payload = json.loads(result.output)
     kinds = {card["kind"] for card in payload["cards"]}
-    assert {"big_section", "heading", "code", "table", "mermaid", "math_block"} <= kinds
+    assert {"heading", "code", "table", "mermaid", "math_block"} <= kinds
     assert payload["document"]["path_hash"]
-    assert payload["cards"][0]["kind"] == "big_section"
+    assert payload["cards"][0]["kind"] == "heading"
 
 
 def test_cards_outline_lists_sections_and_warnings() -> None:
     result = runner.invoke(app, ["cards", str(SAMPLE)])
     assert result.exit_code == 0, output_of(result)
-    assert "[big_section] Section 1" in result.output
+    assert "[heading]" in result.output
     assert "[mermaid]" in result.output
 
 
