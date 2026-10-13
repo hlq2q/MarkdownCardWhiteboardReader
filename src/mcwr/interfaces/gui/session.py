@@ -25,13 +25,13 @@ from mcwr.application.features.detach_restore.service import (
     restore_card,
     toggle_collapse,
 )
+from mcwr.application.features.layout_board.grid import snap_to_grid
 from mcwr.application.features.layout_board.ports import SizeEstimator
 from mcwr.application.features.layout_board.service import (
     LinearLayoutOptions,
     layout_board,
     relayout_subtree,
 )
-from mcwr.application.features.layout_board.grid import snap_to_grid
 from mcwr.application.features.layout_board.stack import (
     hug_all,
     move_subtree,
@@ -369,7 +369,37 @@ class BoardSession(QObject):
         if not measured or not self._layouts:
             return
         self._measured = dict(measured)
+        kept = [
+            card_id
+            for card_id, layout in self._layouts.items()
+            if (card := self._tree().cards.get(card_id)) is not None
+            and (card.parent_id is None or layout.detached)
+        ]
         self._apply_layouts(self._layouts, keep_sizes=False)
+        # Every position that was kept has to take its own subtree with it: the pass above packs the
+        # children around the *new* heights, so a kept parent whose content grew would otherwise end
+        # up below children that were placed against its old box (E-031). The re-stack is per card
+        # and the sweeps run once afterwards -- one full overlap sweep per card turned a 1000-card
+        # document into an O(n^2) pass (measured 10.3 s in test_card_limit, T-055).
+        tree = self._tree()
+        estimator = self._layout_estimator()
+        for card_id in kept:
+            card = tree.cards.get(card_id)
+            if card is None or not card.child_ids or card_id not in self._layouts:
+                continue
+            root = card.parent_id if card.parent_id else card_id
+            before = self._layouts[root].height
+            self._layouts = relayout_subtree(
+                tree,
+                self._layouts,
+                root,
+                blocks=self.blocks,
+                estimator=estimator,
+                options=self._options,
+            )
+            propagate_height(tree, self._layouts, root, self._layouts[root].height - before)
+        resolve_overlaps(tree, self._layouts, all_parents=True, options=self._options)
+        hug_all(tree, self._layouts)
         self.cards_changed.emit(tuple(self._layouts))
 
     def _layout_estimator(self) -> SizeEstimator:

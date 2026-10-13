@@ -1,10 +1,10 @@
 """The body element sits evenly inside its card: equal inset on all four sides (T-053).
 
 The header bar used to sit directly on top of the body. Measured on a code card, the element was
-10 px from the left and right edges (PADDING plus the document's own margin) but only 4 px from the
-top and 16 px from the bottom, and a table card measured the same. Insetting the body by PADDING at
-the top as well makes all four 10 px, because the document's own 4 px margin then lands the same way
-on every side.
+10 px from the left and right edges (PADDING plus Qt's default 4 px document margin) but only 4 px
+from the top and 16 px from the bottom. The body now starts at HEADER_HEIGHT + PADDING, and the
+document margin is zero, so the card's own padding (PADDING, 6 px) is the single distance on every
+side -- and a rendered-image body, drawn straight into the same rect, matches it.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def test_every_body_sits_evenly_inside_its_card(window: MainWindow) -> None:
         if card.kind not in (CardKind.CODE, CardKind.TABLE):
             continue
         left, right, top, bottom = item.body_insets()
-        assert left > 0.0, card.title
+        assert left == pytest.approx(6.0, abs=0.5), card.title  # PADDING, the only padding
         assert right == pytest.approx(left, abs=1.0), card.title
         assert top == pytest.approx(left, abs=1.0), card.title
         assert bottom == pytest.approx(left, abs=1.0), card.title

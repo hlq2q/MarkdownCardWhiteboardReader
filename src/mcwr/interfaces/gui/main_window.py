@@ -9,7 +9,6 @@ from typing import Final, cast
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
-from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
@@ -960,6 +959,8 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- context menu
 
     def _show_context_menu(self, position: QPoint) -> None:
+        if self.view.suppresses_context_menu():
+            return  # a marquee selection owns the right button (D-052)
         item = self.view.itemAt(position)
         menu = QMenu(self)
         if isinstance(item, CardItem):

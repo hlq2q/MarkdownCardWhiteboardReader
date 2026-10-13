@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from mcwr.application.features.layout_board.service import layout_board, relayout_subtree
+from mcwr.application.features.layout_board.service import (
+    layout_board,
+    relayout_subtree,
+)
 from mcwr.application.features.layout_board.stack import (
     hug_all,
     hug_children,
@@ -22,8 +25,8 @@ from mcwr.domain.models import Block, Card, CardLayout, CardTree
 
 GAP = 8.0
 ROW = 86.0
-PARENT_HEIGHT = 274.0  # 86 own + 8 gap + 86 + 8 gap + 86
-GRANDPARENT_HEIGHT = 368.0  # 86 own + 8 gap + P
+PARENT_HEIGHT = 222.0  # 34 header only + 8 gap + 86 + 8 gap + 86
+GRANDPARENT_HEIGHT = 264.0  # 34 header only + 8 gap + P
 
 
 class FixedEstimator:

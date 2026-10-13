@@ -178,7 +178,7 @@ NOT_MAJOR_CASES = (
 # --------------------------------------------------------------- structure signature
 
 
-def test_signature_counts_big_sections_and_heading_levels_in_document_order() -> None:
+def test_signature_counts_top_cards_and_heading_levels_in_document_order() -> None:
     blocks = [
         heading(0, "A", 2),
         heading(1, "B", 3),
@@ -187,7 +187,7 @@ def test_signature_counts_big_sections_and_heading_levels_in_document_order() ->
         heading(4, "C", 1),
     ]
     signature = structure_signature(build(blocks))
-    assert signature.big_sections == 2
+    assert signature.top_cards == 2
     assert signature.heading_levels == (2, 3, 1)
     assert signature.parts == (2, 2, 3, 1)
     assert signature.part_count == 5
@@ -226,13 +226,13 @@ def test_body_edits_and_card_changes_are_not_major(case: _Case) -> None:
     assert major_change_warnings(case.old, case.new) == ()
 
 
-def test_major_warnings_name_the_changed_number_of_big_sections() -> None:
+def test_major_warnings_name_the_changed_number_of_top_cards() -> None:
     old = build(BASE)
     new = build([code(0, "lead = 0", lang="bash"), divider(1), *BASE])
-    assert structure_signature(new).big_sections == 2
+    assert structure_signature(new).top_cards == 2
     assert structure_signature(new).heading_levels == (1,)
     assert major_change_warnings(old, new) == (
-        "Major structure change: the number of big sections changed from 1 to 2.",
+        "Major structure change: the number of top-level cards changed from 1 to 2.",
     )
 
 
@@ -660,7 +660,7 @@ def test_major_change_returns_an_empty_layout_dict_with_a_warning() -> None:
     assert plan.major is True
     assert plan.layouts == {}, "a major change must never silently reuse the old geometry"
     assert plan.warnings[0] == (
-        "Major structure change: the number of big sections changed from 1 to 2."
+        "Major structure change: the number of top-level cards changed from 1 to 2."
     )
     assert any("rebuilt from the new document" in warning for warning in plan.warnings)
     assert set(plan.mapping.kept.values()).isdisjoint(plan.mapping.added)

@@ -4,7 +4,7 @@ The slice is pure: the caller re-reads and re-parses the document (FR-5.2) and p
 both card trees plus the layouts currently on screen. Nothing here touches the disk and
 nothing here mutates its inputs.
 
-The decision follows decision D11: a change is *major* when the number of big sections
+The decision follows decision D11: a change is *major* when the number of top-level cards
 changes or when the sequence of heading levels changes. Body-text edits and card
 additions/removals inside an unchanged heading structure are **not** major (FR-5.4).
 """
@@ -31,14 +31,14 @@ _MAJOR_NOTE = (
 def structure_signature(tree: CardTree) -> StructureSignature:
     """Return the D11 structure signature of ``tree``.
 
-    The signature is the number of big sections plus the sequence of heading levels in
+    The signature is the number of top-level cards plus the sequence of heading levels in
     document order. Card kinds, card counts, titles, body text and content hashes are
     deliberately excluded, so a signature compares two documents structurally and stays
     independent of the ``dict`` order of ``tree.cards``.
     """
     levels = [card.level for card in _walk(tree) if card.kind is CardKind.HEADING]
     return StructureSignature(
-        big_sections=len(tree.root_ids),
+        top_cards=len(tree.root_ids),
         heading_levels=tuple(level for level in levels if level is not None),
         part_count=len(tree.root_ids) + len(levels),
     )
@@ -47,14 +47,14 @@ def structure_signature(tree: CardTree) -> StructureSignature:
 def is_major_change(old_tree: CardTree, new_tree: CardTree) -> bool:
     """Return whether the refresh from ``old_tree`` to ``new_tree`` is major (D11).
 
-    Major means: the number of big sections changed, or the sequence of heading levels
+    Major means: the number of top-level cards changed, or the sequence of heading levels
     changed (a heading added, removed, re-levelled or moved relative to the others).
     Body-text edits, a rewritten paragraph, and card additions or removals inside an
     unchanged heading structure are **not** major: they keep every matched card's
     geometry and only new cards receive a default layout.
     """
     old, new = structure_signature(old_tree), structure_signature(new_tree)
-    return old.big_sections != new.big_sections or old.heading_levels != new.heading_levels
+    return old.top_cards != new.top_cards or old.heading_levels != new.heading_levels
 
 
 def match_cards(old_tree: CardTree, new_tree: CardTree) -> CardMapping:
@@ -190,9 +190,9 @@ def major_change_warnings(old_tree: CardTree, new_tree: CardTree) -> tuple[str, 
     """Name every reason why the refresh counts as major (empty when it is not)."""
     old, new = structure_signature(old_tree), structure_signature(new_tree)
     reasons: list[str] = []
-    if old.big_sections != new.big_sections:
+    if old.top_cards != new.top_cards:
         reasons.append(
-            f"the number of big sections changed from {old.big_sections} to {new.big_sections}"
+            f"the number of top-level cards changed from {old.top_cards} to {new.top_cards}"
         )
     if old.heading_levels != new.heading_levels:
         reasons.append(

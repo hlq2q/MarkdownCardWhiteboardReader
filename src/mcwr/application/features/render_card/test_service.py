@@ -82,7 +82,6 @@ _TEXT_ONLY_KINDS: tuple[CardKind, ...] = (
     CardKind.CODE,
     CardKind.TABLE,
     CardKind.HEADING,
-    CardKind.BIG_SECTION,
     CardKind.FALLBACK_TEXT,
     CardKind.IMAGE,
     CardKind.TASK_LIST,

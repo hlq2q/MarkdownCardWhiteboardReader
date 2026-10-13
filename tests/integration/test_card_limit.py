@@ -103,7 +103,7 @@ def _rich_card(window: MainWindow, kind: str) -> CardItem:
 
 def test_a_document_of_exactly_the_limit_is_opened_with_rich_rendering(tmp_path: Path) -> None:
     """The boundary itself: the limit is not "degraded" (D-040)."""
-    document = _write_document(tmp_path / "at-limit.md", headings=MAX_CARDS - 3)
+    document = _write_document(tmp_path / "at-limit.md", headings=MAX_CARDS - 2)
     renderer = RecordingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]
 
