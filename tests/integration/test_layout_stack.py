@@ -110,13 +110,13 @@ def _drag_card(
     window: MainWindow,
     title: str,
     *,
-    offset_y: float = HEADER_HEIGHT + 20.0,
+    offset_y: float = HEADER_HEIGHT / 2.0,
     distance: float = 120.0,
 ) -> None:
     """Drag the card straight down with real mouse events, the way a user would.
 
-    ``offset_y`` chooses where the card is grabbed: its body by default, or its title bar
-    (the case that used to move the card behind it, E-027).
+    ``offset_y`` chooses where the card is grabbed: the title bar by default, because a press in the
+    body now belongs to the text selection (D-059). Pass a body offset to exercise that path.
     """
     view = window.view
     item = window.card_items[_id(window, title)]

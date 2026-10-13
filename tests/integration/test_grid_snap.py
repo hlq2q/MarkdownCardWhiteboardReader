@@ -81,7 +81,7 @@ def _drag_body_to(window: MainWindow, card_id: str, target: tuple[float, float])
     item = window.card_items[card_id]
     start = item.scenePos()
     scale = view.transform().m11()
-    origin = view.mapFromScene(start + QPointF(item.card_width / 2.0, HEADER_HEIGHT + 20.0))
+    origin = view.mapFromScene(start + QPointF(item.card_width / 2.0, HEADER_HEIGHT / 2.0))
     end_x = origin.x() + (target[0] - start.x()) * scale
     end_y = origin.y() + (target[1] - start.y()) * scale
     _send(

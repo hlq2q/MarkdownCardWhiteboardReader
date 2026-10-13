@@ -111,21 +111,21 @@ def _ctrl_right_double_click(window: MainWindow, point: QPointF) -> None:
 
 
 def test_ctrl_wheel_scales_a_free_card_and_everything_inside_it(window: MainWindow) -> None:
-    g_id = _id(window, "G")
-    window.session.detach(g_id)
+    p_id = _id(window, "P")  # a parentless card cannot be detached, so scale a real child
+    window.session.detach(p_id)
     _settle()
-    p_id, a_id = _id(window, "P"), _id(window, "A")
-    before = {card_id: window.session.layouts[card_id].width for card_id in (g_id, p_id, a_id)}
-    assert window.card_items[g_id].effective_scale == 1.0
+    a_id = _id(window, "A")
+    before = {card_id: window.session.layouts[card_id].width for card_id in (p_id, a_id)}
+    assert window.card_items[p_id].effective_scale == 1.0
 
-    _wheel(window, _body_point(window, "G"), control=True)
+    _wheel(window, _body_point(window, "P"), control=True)
 
-    assert window.session.layouts[g_id].scale > 1.0
+    assert window.session.layouts[p_id].scale > 1.0
     for card_id, width in before.items():
         assert window.session.layouts[card_id].width > width, "the subtree scales with the card"
-    assert window.card_items[g_id].effective_scale > 1.0
-    assert window.card_items[p_id].effective_scale == pytest.approx(
-        window.card_items[g_id].effective_scale
+    assert window.card_items[p_id].effective_scale > 1.0
+    assert window.card_items[a_id].effective_scale == pytest.approx(
+        window.card_items[p_id].effective_scale
     ), "a child inherits the factor instead of carrying its own"
 
 
@@ -141,35 +141,35 @@ def test_a_card_that_was_not_pulled_out_cannot_be_scaled(window: MainWindow) -> 
 
 
 def test_ctrl_right_double_click_restores_the_natural_size(window: MainWindow) -> None:
-    g_id = _id(window, "G")
-    window.session.detach(g_id)
+    p_id = _id(window, "P")
+    window.session.detach(p_id)
     _settle()
-    before = window.session.layouts[g_id].width
-    point = _body_point(window, "G")
+    before = window.session.layouts[p_id].width
+    point = _body_point(window, "P")
     _wheel(window, point, control=True)
-    assert window.session.layouts[g_id].scale > 1.0
+    assert window.session.layouts[p_id].scale > 1.0
 
     _ctrl_right_double_click(window, point)
 
-    assert window.session.layouts[g_id].scale == 1.0
-    assert window.session.layouts[g_id].width == pytest.approx(before, abs=1.0)
-    assert window.card_items[g_id].effective_scale == 1.0
+    assert window.session.layouts[p_id].scale == 1.0
+    assert window.session.layouts[p_id].width == pytest.approx(before, abs=1.0)
+    assert window.card_items[p_id].effective_scale == 1.0
     assert window.view.suppresses_context_menu() is True, "the gesture is not a context-menu click"
 
 
 def test_returning_a_scaled_card_to_its_parent_resets_the_size(window: MainWindow) -> None:
     """The mistake the user asked to avoid: a scaled card must not go back into the column."""
-    g_id = _id(window, "G")
-    window.session.detach(g_id)
+    p_id = _id(window, "P")
+    window.session.detach(p_id)
     _settle()
-    _wheel(window, _body_point(window, "G"), control=True)
-    assert window.session.layouts[g_id].scale > 1.0
+    _wheel(window, _body_point(window, "P"), control=True)
+    assert window.session.layouts[p_id].scale > 1.0
 
-    window.session.restore(g_id)
+    window.session.restore(p_id)
     _settle()
 
-    assert window.session.layouts[g_id].scale == 1.0
-    assert window.session.layouts[g_id].detached is False
+    assert window.session.layouts[p_id].scale == 1.0
+    assert window.session.layouts[p_id].detached is False
 
 
 def test_a_plain_wheel_still_zooms_the_canvas(window: MainWindow) -> None:

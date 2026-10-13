@@ -96,5 +96,6 @@ RESTORED_KEYS: Final[tuple[str, ...]] = (
     "collapsed",
     "detached",
     "manual_size",
+    "scale",
 )
 """The :class:`CardLayout` fields a refresh carries over from the old layout."""

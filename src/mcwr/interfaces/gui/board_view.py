@@ -105,6 +105,13 @@ class BoardView(QGraphicsView):
     zoom_changed = Signal(float)
     card_activated = Signal(object)
     cards_moved = Signal(list, float, float)
+    """Emitted when a group or card drag ends: the ids plus the scene delta (T-051)."""
+
+    scale_requested = Signal(object, float)
+    """Ctrl + wheel over a card: the card id and the factor (T-057)."""
+
+    scale_reset_requested = Signal(object)
+    """Ctrl + right double-click on a card: give it its natural size back (T-057)."""
     """Emitted when a drag ends: the card ids plus the scene delta (T-051)."""
 
     def __init__(self, scene: BoardScene, parent: QWidget | None = None) -> None:
@@ -181,6 +188,13 @@ class BoardView(QGraphicsView):
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()
+        if delta and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            # Ctrl + wheel over a card scales that card (T-057); a plain wheel keeps zooming.
+            card = self.top_card_at(self.mapToScene(event.position().toPoint()))
+            if card is not None:
+                self.scale_requested.emit(card.card.card_id, 1.1 ** (delta / 120.0))
+                event.accept()
+                return
         if delta:
             self.zoom_by(1.15 ** (delta / 120.0))
             event.accept()
@@ -262,8 +276,20 @@ class BoardView(QGraphicsView):
         return item if isinstance(item, CardItem) else None
 
     def top_card_at(self, scene_point: QPointF) -> CardItem | None:
-        """The topmost card at ``scene_point`` -- frozen or movable (E-027/T-051)."""
-        return self.item_at(self.mapFromScene(scene_point))
+        """The topmost card whose box contains ``scene_point`` (E-027/T-051).
+
+        A rectangle test, not ``itemAt``: Qt's own delivery skips a card when its title bar is
+        pressed and hands the press to whatever is behind it, and the same skip applies here.
+        """
+        scene = self.scene()
+        assert scene is not None, "the board always has a scene"
+        found: CardItem | None = None
+        for item in scene.items():
+            if not isinstance(item, CardItem) or not item.sceneBoundingRect().contains(scene_point):
+                continue
+            if found is None or item.zValue() >= found.zValue():
+                found = item
+        return found
 
     def copy_selection(self) -> bool:
         """Copy the card's text selection to the clipboard; False when there is none (T-063)."""
@@ -361,10 +387,9 @@ class BoardView(QGraphicsView):
         if self._group_drag is not None and event.button() == Qt.MouseButton.LeftButton:
             items, origin, positions = self._group_drag
             self._group_drag = None
-            delta = (event.position() - origin) / (self.transform().m11() or 1.0)
-            if delta.x() or delta.y():
-                # The window snaps the group's drop (edges first, then the grid, D-052).
-                self.cards_moved.emit([item.card.card_id for item in items], delta.x(), delta.y())
+            # The items already moved live and each one recorded its own position, so this asks the
+            # session to snap the *group* as one (a zero delta is a snap-only request, D-052).
+            self.cards_moved.emit([item.card.card_id for item in items], 0.0, 0.0)
             event.accept()
             return
         if self._marquee_origin is not None and event.button() == Qt.MouseButton.RightButton:
@@ -379,10 +404,8 @@ class BoardView(QGraphicsView):
             card, origin, card_origin = self._view_drag
             self._view_drag = None
             card.end_view_drag()
-            if card.is_movable:
-                moved = card.scenePos() - card_origin
-                if moved.x() or moved.y():
-                    self.cards_moved.emit([card.card.card_id], moved.x(), moved.y())
+            # The card's own item_moved signal already recorded the new position, so nothing else
+            # may apply the delta again (that double-counted every drag).
             event.accept()
             return
         if self._panning and event.button() == Qt.MouseButton.MiddleButton:

@@ -8,8 +8,9 @@ class stays a thin binding layer.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Final
 
 from PySide6.QtCore import QObject, Signal
 
@@ -26,6 +27,7 @@ from mcwr.application.features.detach_restore.service import (
     toggle_collapse,
 )
 from mcwr.application.features.layout_board.grid import snap_to_grid
+from mcwr.application.features.layout_board.neighbours import Box, snap_delta
 from mcwr.application.features.layout_board.ports import SizeEstimator
 from mcwr.application.features.layout_board.service import (
     LinearLayoutOptions,
@@ -65,6 +67,13 @@ def limit_notice(card_count: int) -> str:
     both the open and the refresh path say exactly the same thing.
     """
     return f"超限：{card_count} 张卡片（上限 {MAX_CARDS}），公式/图表按原文显示"
+
+
+MIN_SCALE: Final[float] = 0.5
+"""Smallest factor a free card may be scaled to (T-057)."""
+
+MAX_SCALE: Final[float] = 3.0
+"""Largest factor a free card may be scaled to (T-057)."""
 
 
 class BoardSession(QObject):
@@ -259,6 +268,110 @@ class BoardSession(QObject):
             move_subtree(tree, self._layouts, child, delta_x, delta_y)
         self.cards_changed.emit(tuple(self._layouts))
 
+    def move_cards(
+        self, card_ids: Sequence[CardId], delta_x: float, delta_y: float, *, snap: bool = True
+    ) -> None:
+        """Move a group of free cards by a scene delta, snapping the drop (T-051/D-052).
+
+        A group drag follows the rules of a single one: only free and parentless cards move, what is
+        attached below them follows by the same delta, and the drop snaps -- edges first, the grid
+        second -- on the group's bounding box so the relative arrangement inside it is untouched.
+        """
+        tree = self._tree()
+        movable = [
+            card_id
+            for card_id in card_ids
+            if (layout := self._layouts.get(card_id)) is not None
+            and (card := tree.cards.get(card_id)) is not None
+            and (card.parent_id is None or layout.detached)
+        ]
+        if not movable:
+            return
+        if snap:
+            delta_x, delta_y = self._snapped_group_delta(movable, delta_x, delta_y)
+            if not delta_x and not delta_y:
+                return
+        elif not delta_x and not delta_y:
+            return
+        for card_id in movable:
+            layout = self._layouts[card_id]
+            layout.move_to(layout.x + delta_x, layout.y + delta_y)
+            for child in tree.cards[card_id].child_ids:
+                move_subtree(tree, self._layouts, child, delta_x, delta_y)
+        self.cards_changed.emit(tuple(self._layouts))
+
+    def _snapped_group_delta(
+        self, card_ids: Sequence[CardId], delta_x: float, delta_y: float
+    ) -> tuple[float, float]:
+        """Edges first, then the grid, for the group's bounding box (D-051/D-052)."""
+        boxes = [self._box_of(card_id) for card_id in card_ids]
+        left = min(box[0] for box in boxes) + delta_x
+        top = min(box[1] for box in boxes) + delta_y
+        right = max(box[0] + box[2] for box in boxes) + delta_x
+        bottom = max(box[1] + box[3] for box in boxes) + delta_y
+        moving: Box = (left, top, right - left, bottom - top)
+        edge_x, edge_y = snap_delta(moving, self._other_boxes(card_ids))
+        if edge_x or edge_y:
+            return delta_x + edge_x, delta_y + edge_y
+        grid_x, grid_y = snap_to_grid(left, top)
+        return delta_x + (grid_x - left), delta_y + (grid_y - top)
+
+    def _box_of(self, card_id: CardId) -> Box:
+        layout = self._layouts[card_id]
+        return (layout.x, layout.y, layout.width, layout.height)
+
+    def _other_boxes(self, card_ids: Sequence[CardId]) -> list[Box]:
+        """Every card that is not part of the move: the neighbours a drop can land against."""
+        skipped = set(card_ids)
+        for card_id in card_ids:
+            skipped.update(self._tree().descendants(card_id))
+        return [self._box_of(other) for other in self._layouts if other not in skipped]
+
+    def scale_card(self, card_id: CardId, factor: float) -> bool:
+        """Scale one free card's subtree by ``factor``; whether anything changed (T-057/D-053).
+
+        Only a card the user pulled out carries a factor of its own: one inside its parent gets its
+        width from the column, and a parentless card is the board's frame. The factor widens it,
+        so everything placed inside it is laid out in the wider box and scales along.
+        """
+        layout = self._layouts.get(card_id)
+        card = self._tree().cards.get(card_id)
+        if layout is None or card is None or not layout.detached:
+            return False
+        scaled = min(max(layout.scale * factor, MIN_SCALE), MAX_SCALE)
+        if abs(scaled - layout.scale) < 1e-6:
+            return False
+        base_width = layout.width / (layout.scale or 1.0)
+        layout.scale = scaled
+        self._relayout_free(card_id, base_width=base_width)
+        return True
+
+    def reset_scale(self, card_id: CardId) -> bool:
+        """Give a free card its natural size back; whether it had been scaled (T-057)."""
+        layout = self._layouts.get(card_id)
+        if layout is None or layout.scale == 1.0:
+            return False
+        base_width = layout.width / (layout.scale or 1.0)
+        layout.scale = 1.0
+        self._relayout_free(card_id, base_width=base_width)
+        return True
+
+    def _relayout_free(self, card_id: CardId, *, base_width: float | None = None) -> None:
+        """Re-stack a free card (with its subtree) in place and republish the board state."""
+        tree = self._tree()
+        self._layouts = relayout_subtree(
+            tree,
+            self._layouts,
+            card_id,
+            blocks=self.blocks,
+            estimator=self._layout_estimator(),
+            options=self._options,
+            base_width=base_width,
+        )
+        resolve_overlaps(tree, self._layouts, all_parents=True, options=self._options)
+        hug_all(tree, self._layouts)
+        self.cards_changed.emit(tuple(self._layouts))
+
     def refresh(self) -> bool:
         """Re-read and re-parse the file on demand, structure first (FR-5, D11).
 
@@ -368,7 +481,15 @@ class BoardSession(QObject):
         """
         if not measured or not self._layouts:
             return
-        self._measured = dict(measured)
+        # A measured height is what the card *rendered* at, factor included, while the placer
+        # multiplies by the effective factor again (T-064/D-060). Store the base height so the two
+        # multiplications never stack up -- E-033: every refresh made a scaled card taller.
+        self._measured = {
+            card_id: height / (layout.effective_scale or 1.0)
+            if (layout := self._layouts.get(card_id)) is not None
+            else height
+            for card_id, height in measured.items()
+        }
         kept = [
             card_id
             for card_id, layout in self._layouts.items()
@@ -427,7 +548,11 @@ class BoardSession(QObject):
         """
         tree = self._tree()
         fresh = layout_board(
-            tree, blocks=self.blocks, estimator=self._layout_estimator(), options=self._options
+            tree,
+            blocks=self.blocks,
+            estimator=self._layout_estimator(),
+            options=self._options,
+            states=previous,
         )
         new_ids = [card_id for card_id in fresh if card_id not in previous]
         for card_id, layout in previous.items():
@@ -442,6 +567,7 @@ class BoardSession(QObject):
             target.collapsed = layout.collapsed
             target.detached = layout.detached
             target.manual_size = layout.manual_size
+            target.scale = layout.scale
             if keep_sizes or layout.manual_size:
                 target.width, target.height = layout.width, layout.height
         self._layouts = fresh
