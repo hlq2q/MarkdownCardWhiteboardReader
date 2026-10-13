@@ -40,9 +40,9 @@ class RecordingRenderer:
 
 
 def _write_document(path: Path, *, headings: int) -> Path:
-    """A document with exactly ``1 + headings + 2`` cards.
+    """A document with exactly ``headings + 2`` cards.
 
-    one card per heading, one math and one mermaid card. The tests
+    One card per heading, one math and one mermaid card (no wrapper card exists any more). The tests
     assert the resulting count, so a change in the card rules fails loudly instead of
     silently testing the wrong side of the boundary.
     """
@@ -125,8 +125,8 @@ def test_a_document_of_exactly_the_limit_is_opened_with_rich_rendering(tmp_path:
 
 
 def test_a_document_over_the_limit_degrades_and_stays_interactive(tmp_path: Path) -> None:
-    """201 cards: opens fast, renders nothing offscreen, says why, and still works."""
-    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 2)
+    """One card over the limit: opens fast, renders nothing offscreen, says why, and still works."""
+    document = _write_document(tmp_path / "over-limit.md", headings=MAX_CARDS - 1)
     renderer = RecordingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]
 

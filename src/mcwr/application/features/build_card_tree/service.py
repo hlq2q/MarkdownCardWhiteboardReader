@@ -100,7 +100,7 @@ def _same_identity(left: _Node, right: _Node) -> bool:
 def _loose_node(block: Block, card_kind: CardKind = CardKind.FALLBACK_TEXT) -> _Node:
     """A card for content that stands outside any heading (it used to belong to a section).
 
-    The block only supplies the card's identity: the walk appends every block it owns, so filling the
+    The block only supplies the card's identity: the walk appends every block the card owns, so
     lists here would claim it twice.
     """
     return _Node(
@@ -170,7 +170,11 @@ def _build_cards(builder: _Builder, blocks: Sequence[Block]) -> None:
                 owner = builder.nodes[stack[-1]]
                 builder.attach(stack[-1], _card_node(block, card_kind, owner))
             else:
-                builder.attach_root(_loose_node(block, card_kind))
+                # a card block with no heading above it is a root of its own, and it owns its block
+                node = _loose_node(block, card_kind)
+                node.blocks.append(block.index)
+                node.raw_parts.append(block.raw_text)
+                builder.attach_root(node)
             continue
 
         level = block.level or 1

@@ -39,6 +39,8 @@ text
 
 #### Fourth
 
+##### Fifth
+
 text
 """
 
@@ -97,7 +99,7 @@ def _row_colours(item: CardItem) -> tuple[tuple[int, int, int], tuple[int, int, 
 
 def test_every_depth_gets_its_own_tier_colour(tmp_path: Path) -> None:
     window = _open(tmp_path)
-    for title, expected_depth in (("Top", 1), ("Second", 2), ("Third", 3), ("Fourth", 4)):
+    for title, expected_depth in (("Top", 0), ("Second", 1), ("Third", 2), ("Fourth", 3)):
         item = _card(window, title)
         depth = _depth(window, item)
         assert depth == expected_depth, (title, depth)
@@ -109,9 +111,9 @@ def test_every_depth_gets_its_own_tier_colour(tmp_path: Path) -> None:
 
 def test_the_fifth_level_and_deeper_reuse_tier_four(tmp_path: Path) -> None:
     window = _open(tmp_path)
-    third, fourth = _card(window, "Third"), _card(window, "Fourth")
-    assert _depth(window, fourth) == 4
-    assert _row_colours(third)[0] == _row_colours(fourth)[0], (
+    fourth, fifth = _card(window, "Fourth"), _card(window, "Fifth")
+    assert _depth(window, fifth) == 4
+    assert _row_colours(fourth)[0] == _row_colours(fifth)[0], (
         "the 5th level must reuse the 4th tier instead of inventing a colour"
     )
 
@@ -121,7 +123,7 @@ def test_the_stripe_is_exactly_three_pixels_and_does_not_eat_the_fill(tmp_path: 
     item = _card(window, "Third")
     image = _paint(item)
     y = int(item.body_rect().center().y())
-    stripe = QColor(level_bar_colour(LIGHT, 3)).getRgb()[:3]
+    stripe = QColor(level_bar_colour(LIGHT, _depth(window, item))).getRgb()[:3]
     fill = QColor(card_fill(LIGHT, CardKind.HEADING)).getRgb()[:3]
     assert image.pixelColor(BAR_SAMPLE_X, y).getRgb()[:3] == stripe
     assert image.pixelColor(FILL_SAMPLE_X, y).getRgb()[:3] == fill
@@ -133,11 +135,11 @@ def test_switching_the_theme_repaints_the_stripe_with_the_other_palette(tmp_path
     window = _open(tmp_path)
     item = _card(window, "Second")
     light_bar, light_fill = _row_colours(item)
-    assert light_bar == QColor(level_bar_colour(LIGHT, 2)).getRgb()[:3]
+    assert light_bar == QColor(level_bar_colour(LIGHT, _depth(window, item))).getRgb()[:3]
 
     window.apply_theme(ThemeMode.DARK)
     dark_bar, dark_fill = _row_colours(item)
-    assert dark_bar == QColor(level_bar_colour(DARK, 2)).getRgb()[:3]
+    assert dark_bar == QColor(level_bar_colour(DARK, _depth(window, item))).getRgb()[:3]
     assert (dark_bar, dark_fill) != (light_bar, light_fill)
     for palette in (LIGHT, DARK):
         assert level_bar_colour(palette, 0) == palette.level_bar[0]

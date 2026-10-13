@@ -119,12 +119,16 @@ def test_layout_is_deterministic() -> None:
 def test_parent_grows_to_hold_its_children() -> None:
     tree = sample_tree()
     result = layout(tree, height=100.0)
+    nested = 0
     for root_id in tree.root_ids:
         root = result[root_id]
         descendants = [result[card] for card in tree.descendants(root_id)]
-        assert descendants, "the sample has nested cards"
+        if not descendants:
+            continue  # without a wrapper card a top-level card may well have none
+        nested += 1
         for child in descendants:
             assert child.y + child.height <= root.y + root.height
+    assert nested, "the sample has nested cards"
 
 
 def test_options_control_the_root_width() -> None:
