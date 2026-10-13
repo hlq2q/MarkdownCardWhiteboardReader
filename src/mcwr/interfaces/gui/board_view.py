@@ -407,10 +407,9 @@ class BoardView(QGraphicsView):
         return self.suppresses_context_menu()
 
     def _select_in_band(self) -> None:
-        """Select every *detached* card the marquee band touches (D-052: frozen children stay out)."""
+        """Select every *detached* card the band touches (D-052: frozen children stay out)."""
         scene = self.scene()
-        if scene is None:
-            return
+        assert scene is not None, "the band only exists on a scene"
         band = self.mapToScene(self._marquee_band.geometry()).boundingRect()
         scene.clearSelection()
         picked = 0
