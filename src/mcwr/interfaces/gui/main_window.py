@@ -572,6 +572,9 @@ class MainWindow(QMainWindow):
         self.session.cards_changed.connect(self._apply_geometry)
         self.session.status.connect(self._show_status)
         self.session.failed.connect(self._show_failure)
+        self.view.cards_moved.connect(self._on_cards_moved)
+        self.view.scale_requested.connect(self._on_scale_requested)
+        self.view.scale_reset_requested.connect(self._on_scale_reset_requested)
         self.view.zoom_changed.connect(self._on_zoom_changed)
         for bar in (self.view.horizontalScrollBar(), self.view.verticalScrollBar()):
             bar.valueChanged.connect(self._on_viewport_scrolled)
@@ -902,6 +905,9 @@ class MainWindow(QMainWindow):
             if item is None or layout is None:
                 continue
             item.set_card_geometry(layout.width, layout.height)
+            # The placer worked the effective scale out (T-064): this card's own factor times
+            # its ancestors', so the painted content and the layout cannot disagree (E-033).
+            item.set_scale(layout.effective_scale)
             item.setZValue(float(layout.z))
             card = document.tree.cards.get(card_id)
             # A re-layout replaces CardLayout objects, so the item has to point at the current
@@ -915,6 +921,27 @@ class MainWindow(QMainWindow):
             item.setPos(QPointF(layout.x - offset.x(), layout.y - offset.y()))
             item.setVisible(not self._is_hidden(card_id))
         self.view.refresh_scene_rect()  # cards moved: keep the pannable margin (T-040)
+
+    def _on_scale_requested(self, card_id: str, factor: float) -> None:
+        """Ctrl + wheel over a card (T-057): scale it when it is a free card, else say why not."""
+        if self.session.scale_card(card_id, factor):
+            layout = self.session.layouts[card_id]
+            self.statusBar().showMessage(f"card scale {layout.scale:.2f}x")
+        else:
+            self.statusBar().showMessage(
+                "only a free card can be scaled; Ctrl+right-double-click resets"
+            )
+
+    def _on_scale_reset_requested(self, card_id: str) -> None:
+        """Ctrl + right double-click (T-057): back to the natural size."""
+        if self.session.reset_scale(card_id):
+            self.statusBar().showMessage("card size reset to 1.00x")
+        else:
+            self.statusBar().showMessage("this card is already at its natural size")
+
+    def _on_cards_moved(self, card_ids: list[str], delta_x: float, delta_y: float) -> None:
+        """A finished drag: the session owns the geometry, so the drop snaps (T-051)."""
+        self.session.move_cards(card_ids, delta_x, delta_y, snap=self.action_snap.isChecked())
 
     def _toggle_snap(self) -> None:
         """Turn grid snapping on or off (T-048, D-051); the state lives for this window only."""

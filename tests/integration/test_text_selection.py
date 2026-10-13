@@ -114,7 +114,7 @@ def test_ctrl_c_copies_the_selection_to_the_clipboard(window: MainWindow) -> Non
 
     copied = QApplication.clipboard().text()
     assert copied == item.selected_text()  # type: ignore[attr-defined]
-    assert "fox" in copied
+    assert "quick" in copied
 
 
 def test_the_title_bar_is_still_the_drag_handle(window: MainWindow) -> None:

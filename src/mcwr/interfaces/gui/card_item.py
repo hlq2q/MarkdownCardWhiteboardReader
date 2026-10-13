@@ -52,7 +52,6 @@ from mcwr.interfaces.gui.theme import (
     HEADER_HEIGHT,
     LEVEL_BAR_WIDTH,
     LIGHT,
-    MIN_BODY_HEIGHT,
     MIN_LEGIBLE_ON_SCREEN_WIDTH,
     PADDING,
     SELECTED_WIDTH,
@@ -107,6 +106,7 @@ class CardItem(QGraphicsObject):
         self._toc = toc
         self._depth = max(depth, 0)
         self._cursor: QTextCursor | None = None
+        self._scale = 1.0
         self._document = _build_document(card, blocks, palette, toc)
         self._image = image
         self._pending = False
@@ -114,7 +114,7 @@ class CardItem(QGraphicsObject):
         self._dragging = False
         self._press_position: QPointF | None = None
         self._width = max(layout.width, 120.0)
-        self._height = max(layout.height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
+        self._height = max(layout.height, self.header_height())
         # Lay the text out as soon as the geometry is known (not only in ``paint``): a click
         # can be hit-tested before the first paint, and ``anchor_at`` must answer then too.
         self._document.setTextWidth(self.body_rect().width())
@@ -149,7 +149,7 @@ class CardItem(QGraphicsObject):
 
     def is_in_header(self, scene_point: QPointF) -> bool:
         """Whether ``scene_point`` falls in this card's title bar (E-027)."""
-        return 0.0 <= self.mapFromScene(scene_point).y() < HEADER_HEIGHT
+        return 0.0 <= self.mapFromScene(scene_point).y() < self.header_height()
 
     def measured_body_height(self) -> float | None:
         """The height this card's body really needs, measured from its document (T-049).
@@ -207,7 +207,7 @@ class CardItem(QGraphicsObject):
             return
         self.prepareGeometryChange()
         self._width = max(width, 120.0)
-        self._height = max(height, HEADER_HEIGHT + MIN_BODY_HEIGHT)
+        self._height = max(height, self.header_height())
         self._document.setTextWidth(self.body_rect().width())
 
     @property
@@ -312,6 +312,30 @@ class CardItem(QGraphicsObject):
         context.selections = [selection]
         self._document.documentLayout().draw(painter, context)
 
+    def header_height(self) -> float:
+        """The title bar's height: the base height times this card's effective scale (T-057)."""
+        return HEADER_HEIGHT * self._scale
+
+    @property
+    def effective_scale(self) -> float:
+        """The scale this card is drawn with; the placer computed it (T-064/D-060)."""
+        return self._scale
+
+    def set_scale(self, scale: float) -> None:
+        """Use ``scale`` for this card's fonts and title bar, re-rendering when it changes (T-057).
+
+        The geometry comes from the layout, which scales the box the same way; this only makes the
+        painted content match, so a scaled card's text is drawn at the right size in its box.
+        """
+        if scale == self._scale:
+            return
+        self._scale = max(scale, 0.05)
+        self._document = _build_document(
+            self.card, self._blocks, self._palette, self._toc, scale=self._scale
+        )
+        self._document.setTextWidth(self.body_rect().width())
+        self.update()
+
     def body_rect(self) -> QRectF:
         """The area the body is drawn in, inset equally on all four sides (T-053).
 
@@ -321,11 +345,12 @@ class CardItem(QGraphicsObject):
         margin then lands on the same 10 px on every side -- while the height still equals the
         measured body exactly (header + body + 2 * PADDING is what the layout reserves).
         """
+        header = self.header_height()
         return QRectF(
             PADDING,
-            HEADER_HEIGHT + PADDING,
+            header + PADDING,
             max(self._width - 2 * PADDING, 1.0),
-            max(self._height - HEADER_HEIGHT - 2 * PADDING, 1.0),
+            max(self._height - header - 2 * PADDING, 1.0),
         )
 
     # ------------------------------------------------------------------- painting
@@ -420,12 +445,12 @@ class CardItem(QGraphicsObject):
         painter.drawRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
         _draw_depth_bar(painter, frame, palette, self._depth, clipped=not reduced)
 
-        header = QRectF(frame.left(), frame.top(), frame.width(), HEADER_HEIGHT)
+        header = QRectF(frame.left(), frame.top(), frame.width(), self.header_height())
         painter.setPen(QPen(QColor(palette.border), BORDER_WIDTH))
         painter.drawLine(
             QPointF(frame.left(), header.bottom()), QPointF(frame.right(), header.bottom())
         )
-        _draw_header_text(painter, header, self.card, palette)
+        _draw_header_text(painter, header, self.card, palette, self._scale)
 
         if not reduced:
             # T-033: below the thumbnail threshold the body is not laid out, not resampled and
@@ -600,7 +625,12 @@ def _draw_body_image(painter: QPainter, body: QRectF, image: QPixmap) -> None:
 
 
 def _build_document(
-    card: Card, blocks: Mapping[int, Block], palette: Palette, toc: tuple[TocEntry, ...] = ()
+    card: Card,
+    blocks: Mapping[int, Block],
+    palette: Palette,
+    toc: tuple[TocEntry, ...] = (),
+    *,
+    scale: float = 1.0,
 ) -> QTextDocument:
     """Render this card's own blocks (never its children's) as Markdown text.
 
@@ -608,7 +638,7 @@ def _build_document(
     draws lexically highlighted code (T-029). Everything else keeps the Markdown path.
     """
     document = QTextDocument()
-    document.setDefaultFont(_font(UI_FONT, FONT_PX["body"]))
+    document.setDefaultFont(_font(UI_FONT, FONT_PX["body"] * scale))
     # Code blocks and links must stay readable on the dark fill, where the markdown
     # importer's own light colours would otherwise paint dark-on-dark.
     document.setDefaultStyleSheet(_stylesheet(palette))
@@ -675,10 +705,12 @@ def _code_html(block: Block, palette: Palette) -> str:
     )
 
 
-def _draw_header_text(painter: QPainter, header: QRectF, card: Card, palette: Palette) -> None:
+def _draw_header_text(
+    painter: QPainter, header: QRectF, card: Card, palette: Palette, scale: float = 1.0
+) -> None:
     glyph = KIND_GLYPH.get(card.kind, "•")
     painter.setPen(QPen(QColor(palette.text_secondary)))
-    font = _font(UI_FONT, FONT_PX["control"], bold=True)
+    font = _font(UI_FONT, FONT_PX["control"] * scale, bold=True)
     painter.setFont(font)
     glyph_rect = QRectF(header.left() + 8.0, header.top(), 30.0, header.height())
     painter.drawText(glyph_rect, int(Qt.AlignmentFlag.AlignVCenter), glyph)
