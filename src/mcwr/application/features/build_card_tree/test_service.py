@@ -89,12 +89,11 @@ def test_headings_nest_by_level() -> None:
         heading(3, "D", 2),
     ]
     tree = build(blocks)
-    section = tree.cards[tree.root_ids[0]]
     a = titled(tree, "A")
     b = titled(tree, "B")
     c = titled(tree, "C")
     d = titled(tree, "D")
-    assert section.child_ids == (a.card_id,)
+    assert tree.root_ids == (a.card_id,), "the H1 is the root; nothing wraps it (T-055)"
     assert a.child_ids == (b.card_id, d.card_id)
     assert b.child_ids == (c.card_id,)
     assert c.child_ids == ()

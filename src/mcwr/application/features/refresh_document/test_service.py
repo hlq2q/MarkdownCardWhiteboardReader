@@ -163,12 +163,12 @@ MAJOR_CASES = (
     _Case("divider removed", build(DIVIDER_ADDED), build(DIVIDER_REMOVED)),
     _Case("heading level changed", build(BASE), build(LEVELS_CHANGED)),
     _Case("heading removed", build(HEADING_REMOVED), build(BASE)),
+    _Case("card added at the top level", build(BASE), build(FIRST_SECTION_ONLY)),
 )
 
 NOT_MAJOR_CASES = (
     _Case("content edited", build(BASE), build(EDITED)),
     _Case("card added inside a heading", build(BASE), build(EXTENDED)),
-    _Case("card added at the top level", build(BASE), build(FIRST_SECTION_ONLY)),
     _Case("card removed", build(CARD_REMOVED), build(BASE)),
     _Case("card added among siblings", build(BASE), build(CARD_ADDED_AMONG_SIBLINGS)),
     _Case("heading renamed", build(BASE), build(RENAMED_HEADING)),
@@ -206,10 +206,15 @@ def test_signature_does_not_depend_on_the_dict_order_of_cards() -> None:
     assert match_cards(tree, shuffled) == match_cards(tree, tree)
 
 
-def test_signature_distinguishes_section_count_from_heading_count() -> None:
-    many_sections = build([heading(0, "A", 2), divider(1), heading(2, "B", 2)])
-    one_section = build([heading(0, "A", 2), heading(1, "B", 2)])
-    assert structure_signature(many_sections).parts != structure_signature(one_section).parts
+def test_signature_distinguishes_top_card_count_from_heading_count() -> None:
+    one_top = build([heading(0, "A", 1)])
+    two_tops = build([code(0, "lead = 0", lang="bash"), heading(1, "A", 1)])
+    assert (
+        structure_signature(one_top).heading_levels == structure_signature(two_tops).heading_levels
+    )
+    assert structure_signature(one_top).top_cards == 1
+    assert structure_signature(two_tops).top_cards == 2
+    assert structure_signature(one_top).parts != structure_signature(two_tops).parts
 
 
 # --------------------------------------------------------------------- major verdict
@@ -245,7 +250,7 @@ def test_major_warnings_name_the_changed_heading_level_sequence() -> None:
 
 def test_major_warnings_report_both_reasons() -> None:
     old = build(BASE)
-    new = build([*DIVIDER_ADDED, heading(4, "Deep", 4)])
+    new = build([code(0, "lead = 0", lang="bash"), *DIVIDER_ADDED, heading(5, "Deep", 4)])
     warnings = major_change_warnings(old, new)
     assert len(warnings) == 2
     assert "top-level cards" in warnings[0]
@@ -293,8 +298,6 @@ def test_new_heading_plus_new_code_block_is_major_and_keeps_no_geometry() -> Non
         "Major structure change: the sequence of heading levels changed from [1] to [1, 2]."
     )
     assert [new.cards[card_id].title for card_id in plan.mapping.added] == ["Middle"]
-    section = titled(old, "Section 1").card_id
-    assert plan.mapping.kept[section] == titled(new, "Section 1").card_id
     intro_old, intro_new = titled(old, "Intro"), titled(new, "Intro")
     assert plan.mapping.kept[intro_old.card_id] == intro_new.card_id
     code_old, code_new = titled(old, "python"), titled(new, "python")
@@ -302,7 +305,7 @@ def test_new_heading_plus_new_code_block_is_major_and_keeps_no_geometry() -> Non
     assert plan.mapping.kept[code_old.card_id] == code_new.card_id, (
         "pass 2 relocates it by content hash instead"
     )
-    assert len(plan.mapping.kept) == 3, "the whole old document is still accounted for"
+    assert len(plan.mapping.kept) == 2, "the whole old document is still accounted for"
     assert_partition(plan.mapping, old, new)
 
 
@@ -411,7 +414,6 @@ def test_removed_card_does_not_leak_into_the_result() -> None:
     assert gone.card_id not in set(plan.mapping.kept.values())
     assert set(plan.layouts) == set(new.cards)
     assert set(plan.mapping.kept) == {
-        titled(old, "Section 1").card_id,
         titled(old, "Intro").card_id,
         titled(old, "python").card_id,
     }, "only the cards whose keys survived are kept"
@@ -490,7 +492,7 @@ def test_identical_cards_relocate_by_document_order_without_cross_matching() -> 
     plan = plan_refresh(old, new, old_layouts)
 
     assert plan.major is False
-    assert len(old.cards) == len(new.cards) == 5
+    assert len(old.cards) == len(new.cards) == 4
     assert len(plan.mapping.added) == 1
     assert len(plan.mapping.removed) == 1
     assert plan.mapping.added[0] == titled(new, "Renamed left").card_id
@@ -620,7 +622,8 @@ def test_content_hash_fallback_never_matches_across_card_kinds() -> None:
     assert structure_signature(old) == structure_signature(new)
 
     mapping = match_cards(old, new)
-    assert mapping.added == ()
+    loose = titled(new, "text")
+    assert mapping.added == (loose.card_id,), "a paragraph card must not inherit a code card's key"
     assert mapping.removed == (titled(old, "python").card_id,)
     assert_partition(mapping, old, new)
 
@@ -628,7 +631,7 @@ def test_content_hash_fallback_never_matches_across_card_kinds() -> None:
 def test_a_content_derived_card_never_absorbs_a_deleted_card_layout() -> None:
     """With no container left, a card whose hash matches nothing is added, not paired."""
     old = build(CODE_ONLY)
-    new = build([para(0, "same text")])
+    new = build([para(0, "different text")])
     loose = new.cards[new.root_ids[0]]
 
     mapping = match_cards(old, new)
@@ -651,7 +654,7 @@ def test_card_mapping_rejects_a_new_card_claimed_twice() -> None:
 
 
 def test_major_change_returns_an_empty_layout_dict_with_a_warning() -> None:
-    old, new = build(BASE), build(DIVIDER_ADDED)
+    old, new = build(BASE), build(FIRST_SECTION_ONLY)
     plan = plan_refresh(old, new, layouts_for(old))
 
     assert isinstance(plan, RefreshPlan)
@@ -681,7 +684,7 @@ def test_layouts_for_an_empty_document_are_empty_without_notes() -> None:
     empty = build([])
     layouts, notes = merge_layouts(layouts_for(old), match_cards(old, empty), empty)
     assert layouts == {}
-    assert notes == ("3 card(s) are no longer in the document and were removed from the board.",)
+    assert notes == ("2 card(s) are no longer in the document and were removed from the board.",)
 
 
 def test_merge_layouts_refuses_a_mapping_that_misses_a_card() -> None:

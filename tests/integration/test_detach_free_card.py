@@ -98,12 +98,14 @@ def test_a_refresh_finds_nothing_left_to_repair(window: MainWindow) -> None:
     _settle()
     window.session.detach(c)
     _settle()
-    before = {card_id: window.session.layouts[card_id].height for card_id in (a, b, c)}
+    window._refresh()  # the first pass adopts the measured heights, so compare two settled passes
+    _settle()
+    settled = {card_id: window.session.layouts[card_id].height for card_id in (a, b, c)}
     z_y = window.session.layouts[_id(window, "Z")].y
 
     window._refresh()
     _settle()
 
-    for card_id, height in before.items():
+    for card_id, height in settled.items():
         assert window.session.layouts[card_id].height == pytest.approx(height, abs=1.0)
     assert window.session.layouts[_id(window, "Z")].y == pytest.approx(z_y, abs=1.0)
