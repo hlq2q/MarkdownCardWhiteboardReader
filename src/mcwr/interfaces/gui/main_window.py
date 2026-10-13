@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Final, cast
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QContextMenuEvent,
+    QKeySequence,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -582,7 +589,6 @@ class MainWindow(QMainWindow):
         # QWidget::event() and never calls contextMenuEvent(), so a modifier-based veto (Ctrl here)
         # could not work. The view emits the request itself instead (T-057/T-062).
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
-        self.view.customContextMenuRequested.connect(self._show_context_menu)
         # The board also resizes on its own (sidebar width), so the floating strip follows
         # the view and not just the window (T-035).
         self.view.installEventFilter(self)
@@ -989,6 +995,16 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- context menu
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """Show the board's menu for a right click (T-062).
+
+        The view uses ``DefaultContextMenu``, so Qt asks the widget under the cursor -- the
+        viewport -- and the unaccepted event travels up to this window. The live-modifier veto
+        belongs here too: Ctrl owns the right button (T-057), an up marquee owns it as well (D-052).
+        """
+        self._show_context_menu(self.view.viewport().mapFrom(self, event.pos()))
+        event.accept()
+
     def _card_at(self, position: QPoint) -> CardItem | None:
         """The card a menu request is about.
 
@@ -1011,7 +1027,11 @@ class MainWindow(QMainWindow):
         menu.addAction(self.action_refresh)
         menu.addAction(self.action_restore_all)
         menu.addAction(self.action_fit)
-        menu.exec(self.view.viewport().mapToGlobal(position))
+        self._exec_menu(menu, self.view.viewport().mapToGlobal(position))
+
+    def _exec_menu(self, menu: QMenu, global_position: QPoint) -> None:
+        """Show the menu. A seam: ``exec`` is modal, so tests replace this to inspect the menu."""
+        menu.exec(global_position)
 
     def _fill_card_menu(self, menu: QMenu, card_id: CardId) -> None:
         document = self.session.document

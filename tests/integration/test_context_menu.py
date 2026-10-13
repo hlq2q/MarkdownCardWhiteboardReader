@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QGraphicsView
 
 from mcwr.interfaces.gui.card_item import CardItem
@@ -100,13 +100,46 @@ def _send(view: QGraphicsView, kind: QEvent.Type, point: QPointF, button, button
     QApplication.processEvents()
 
 
-def test_a_right_click_on_the_title_bar_finds_the_card(window: MainWindow) -> None:
-    """The menu must find the card the point is in, even in its title bar (E-027).
+def test_a_right_click_on_the_title_bar_offers_the_card_menu(
+    window: MainWindow, monkeypatch
+) -> None:
+    """The window owns the context-menu event, and the card must be found in its title bar.
 
-    The lookup used ``QGraphicsView.itemAt``, which Qt skips for a point in a title bar, so the
-    card's own menu section disappeared -- and the title bar is exactly where a user right-clicks a
-    card. This asserts the lookup itself, not the modal menu that no test can close.
+    Two faults lived here: nothing accepted the event at all (the view uses ``DefaultContextMenu``,
+    so the old ``customContextMenuRequested`` connection could never fire and no menu appeared), and
+    the lookup used ``QGraphicsView.itemAt``, which Qt skips for a point in a title bar (E-027).
+    This drives the real event, in *window* coordinates -- the path the user actually takes.
     """
+    view = window.view
+    item = window.card_items[_id(window, "G")]
+    scene_point = item.scenePos() + QPointF(item.card_width / 2.0, HEADER_HEIGHT / 2.0)
+    viewport_point = view.mapFromScene(scene_point)
+    window_point = view.viewport().mapTo(window, viewport_point)
+
+    shown: list[list[str]] = []
+
+    def _capture(menu):  # noqa: ANN001, ANN202
+        shown.append([action.text() for action in menu.actions()])
+
+    monkeypatch.setattr(MainWindow, "_exec_menu", lambda self, menu, position: _capture(menu))
+
+    event = QContextMenuEvent(
+        QContextMenuEvent.Reason.Mouse,
+        window_point,
+        view.viewport().mapToGlobal(viewport_point),
+    )
+    QApplication.sendEvent(window, event)
+    _settle()
+
+    assert shown, "no context menu was shown at all"
+    assert any("自由卡片" in text for text in shown[0]), (
+        "the card's own menu section is missing -- the event never reached the window, or the "
+        "lookup missed the title bar (E-027)"
+    )
+
+
+def test_a_right_click_on_the_title_bar_finds_the_card(window: MainWindow) -> None:
+    """The white-box half: the lookup must see a card the point is inside, title bar or not."""
     point = _title_bar_point(window, "G").toPoint()
 
     found = window._card_at(point)
