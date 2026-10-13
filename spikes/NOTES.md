@@ -106,6 +106,44 @@ python -m uv run python spikes/spike_web_render.py                  # 4 个 work
 - 未验证 D7 画布变换下的实际观感（档位切换时的重绘延迟只测到"单张 230–700 ms"这一层）。
 - 未测 100 张卡片的批量渲染吞吐与磁盘缓存命中表现。
 
+## Spike 4 — Pygments 高亮 HTML 能否在 QTextDocument 里保住颜色（T-029，2026-10-12）
+
+脚本：`spikes/spike_pygments_qt.py` ｜ 原始输出：`spikes/_out/spike_pygments_{light,dark}.png`
+
+问题：`HtmlFormatter(noclasses=True)` 产出的行内颜色，Qt 的富文本子集是否保留？以及两套候选样式对
+visual-spec 的 `code_bg` 实测对比度是多少？
+
+**结论：可行**（判据是像素颜色数，不是"看着像"）：
+
+| 主题 | Pygments 样式 | 光栅里的不同颜色数 | 关键字 | 注释 | 字符串 |
+|---|---|---|---|---|---|
+| 浅色（`code_bg #F1F4F7`） | `default` | 8 | `#008000` 4.65 ✅ | `#3D7B7B` **4.41 ❌** | `#BA2121` 5.72 ✅ |
+| 深色（`code_bg #20252B`） | `monokai` | 8 | `#66d9ef` 9.36 ✅ | `#959077` 4.80 ✅ | `#e6db74` 10.84 ✅ |
+
+- Qt 保留了 `<span style="color:…">`，也保留了 `<pre>` 里的换行与代码底色（顺带证明 `setHtml` 可用）。
+- 浅色 `default` 的注释色低于 AA，故产线取"**低于 4.5:1 就回退到该主题 `text_secondary`**"的规则（D-036），不发明新颜色。
+- 坑：offscreen 平台**没有字体**（`QFontDatabase: Cannot find font directory`），字形渲染成方框；测颜色仍然有效，但**要看真实排版必须用真实平台出图**（见 E-022：围栏缺陷就是看图才发现的）。
+- 坑：`pygments.lex("")` 会补一个换行（`ensurenl`），空代码块要显式返回空串。
+
+## Spike 4 — Pygments 高亮 HTML 能否在 QTextDocument 里保住颜色（T-029，2026-10-12）
+
+脚本：`spikes/spike_pygments_qt.py` ｜ 原始输出：`spikes/_out/spike_pygments_{light,dark}.png`
+
+问题：`HtmlFormatter(noclasses=True)` 产出的行内颜色，Qt 的富文本子集是否保留？以及两套候选样式对
+visual-spec 的 `code_bg` 实测对比度是多少？
+
+**结论：可行**（判据是像素颜色数，不是"看着像"）：
+
+| 主题 | Pygments 样式 | 光栅里的不同颜色数 | 关键字 | 注释 | 字符串 |
+|---|---|---|---|---|---|
+| 浅色（`code_bg #F1F4F7`） | `default` | 8 | `#008000` 4.65 ✅ | `#3D7B7B` **4.41 ❌** | `#BA2121` 5.72 ✅ |
+| 深色（`code_bg #20252B`） | `monokai` | 8 | `#66d9ef` 9.36 ✅ | `#959077` 4.80 ✅ | `#e6db74` 10.84 ✅ |
+
+- Qt 保留了 `<span style="color:…">`，也保留了 `<pre>` 里的换行与代码底色（顺带证明 `setHtml` 可用）。
+- 浅色 `default` 的注释色低于 AA，故产线取"**低于 4.5:1 就回退到该主题 `text_secondary`**"的规则（D-036），不发明新颜色。
+- 坑：offscreen 平台**没有字体**（`QFontDatabase: Cannot find font directory`），字形渲染成方框；测颜色仍然有效，但**要看真实排版必须用真实平台出图**（见 E-022：围栏缺陷就是看图才发现的）。
+- 坑：`pygments.lex("")` 会补一个换行（`ensurenl`），空代码块要显式返回空串。
+
 ## 待办 spike
 
 | # | spike | 状态 |
@@ -114,3 +152,5 @@ python -m uv run python spikes/spike_web_render.py                  # 4 个 work
 | 3 | `spike_web_render.py`（KaTeX/Mermaid 离屏渲染 + 缩放档位） | **已完成（2026-10-12）**：可行；offscreen 平台可用；3 档 + 常驻页 + PNG 缓存为准 |
 | 4 | `spike_layout_roundtrip.py`（快照往返 + 损坏降级） | 未开始 |
 | 5 | `spike_multiwindow.py`（多进程会话分片） | 未开始 |
+| 6 | `spike_pygments_qt.py`（高亮 HTML × QTextDocument） | **已完成（2026-10-12）**：可行；颜色与底色保留；只有浅色注释色需回退（见上） |
+| 6 | `spike_pygments_qt.py`（高亮 HTML × QTextDocument） | **已完成（2026-10-12）**：可行；颜色与底色保留；只有浅色注释色需回退（见上） |

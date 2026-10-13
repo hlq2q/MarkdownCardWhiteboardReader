@@ -2,7 +2,7 @@
 
 - 项目名称：**显示名 `MarkdownCardWhiteboardReader`**（D-026，与 `%APPDATA%` 目录名一致）；包名 `mcwr`，分发名 `markdown-card-whiteboard`
 - 状态文件位置：`C:\Users\31094\Projects\MarkdownCardWhiteboardReader`（四件套与代码同根）
-- 最后更新：2026-10-12 16:27:10 +08:00
+- 最后更新：2026-10-12 17:24:34 +08:00
 
 ## 1. 项目目标
 
@@ -48,11 +48,12 @@ MarkdownCardWhiteboardReader/
 │   │   └── （端口在各 feature 的 ports.py）
 │   ├── infrastructure/    # markdown_reader · markdown_it_adapter · heuristic_sizer
 │   │                      # json_layout_store(+_layout_codec/+_atomic) · app_paths · web_renderer
+│   │                      # pygments_highlighter（唯一 import pygments 的模块，T-029）
 │   ├── interfaces/
 │   │   ├── cli/           # main.py（cards/version/gui）· views.py
 │   │   └── gui/           # app.py · main_window.py · board_view.py · card_item.py
 │   │                      # session.py · theme.py（双主题调色板/字体/尺寸，visual-spec 落地）
-│   ├── shared/            # logging.py · config.py（主题偏好等持久化，原子写）
+│   ├── shared/            # logging.py · config.py（偏好持久化，原子写）· contrast.py（WCAG 计算）
 │   ├── assets/web/        # katex/ · mermaid/dist/ · LICENSES.md
 │   └── container.py       # 唯一装配点
 ├── spikes/                # 一次性验证脚本 + NOTES.md + samples/ + _out/（_out 已 gitignore）
@@ -90,16 +91,17 @@ MarkdownCardWhiteboardReader/
 | `src/mcwr/application/features/refresh_document/` | 目录 | 刷新合并：结构签名（D11 判据）、键匹配 + 内容哈希回退、几何合并 | `plan_refresh` `is_major_change` `match_cards` `merge_layouts` | domain | GUI session | 中：判据语义易被误读 | 10 | 高 |
 | `src/mcwr/application/features/render_card/` | 目录 | 判定哪些卡片需要位图 + 提取待渲染源 + 透传 `theme`（纯逻辑，无 Qt） | `needs_web_render` `web_source` `card_image` `WebCardRenderer` | domain | GUI main_window | 低 | 11 | 高 |
 | `src/mcwr/application/features/build_toc/` | 目录 | 目录条目：标题树 → 可点击条目（锚点=slugify+去重后缀），并提供「锚点 → 卡片」的同一份映射（FR-2.4） | `TocEntry` `build_toc` `slugify` `resolve_anchor` `toc_markdown` | domain enums/models | card_item / session / main_window | 低 | 11.5 | 高 |
+| `src/mcwr/application/features/search_cards/` | 目录 | 卡片搜索（T-019）：大小写敏感的子串匹配，范围为每张卡**自己的**正文（自有块 + 标题兜底），按文档顺序返回命中 | `SearchHit` `search_cards` `card_text` | domain | main_window | 低 | 11.6 | 高 |
 | `src/mcwr/infrastructure/markdown_reader.py` | 文件 | 只读读字节、编码探测（utf-8-sig/utf-8/gbk/cp1252 → 替换字符降级）、换行统计 | `FileMarkdownReader` | parse_document.models | container | 中：降级路径需保持只读 | 12 | 高 |
 | `src/mcwr/infrastructure/markdown_it_adapter.py` | 文件 | token → IR 块（9 类成卡块 + 内容块 + toc 特判 + 图片段落升级） | `MarkdownItBlockParser` `build_parser` | markdown-it-py / mdit-py-plugins | container | 中：依赖第三方 token 形态（Spike 1 已固化） | 13 | 高 |
 | `src/mcwr/infrastructure/json_layout_store.py` | 文件 | 会话分片 JSON 快照存储：原子写 + schema 版本 + last_session 播种 | `JsonLayoutStore` | `_layout_codec` `_atomic` app_paths | container | 中：D15 分片语义 | 14 | 高 |
-| `src/mcwr/infrastructure/web_renderer.py` | 文件 | 离屏 KaTeX/Mermaid 栅格化：单隐藏视图 + `printToPdf` → `QPdfDocument.render` + 档位缓存；`theme` 进缓存键并在渲染前用页面内 `mcwrSetTheme` 切换（不重载页面），任何失败返回 None | `QtWebCardRenderer` | PySide6(QtWebEngine/Pdf) app_paths + theme(惰性) | container | **高**：唯一依赖 GPU/Chromium 行为的模块，历史上多次静默错误 | 15 | 高 |
+| `src/mcwr/infrastructure/web_renderer.py` | 文件 | 离屏 KaTeX/Mermaid 栅格化：单隐藏视图 + `printToPdf` → `QPdfDocument.render` + 档位缓存；`theme` 进缓存键并在渲染前用页面内 `mcwrSetTheme` 切换（不重载页面）；**缓存上限 1024 条 + mtime LRU（T-017，含历代 shell 回收）**；任何失败返回 None | `QtWebCardRenderer` `MAX_CACHE_ENTRIES` | PySide6(QtWebEngine/Pdf) app_paths + theme(惰性) | container | **高**：唯一依赖 GPU/Chromium 行为的模块，历史上多次静默错误 | 15 | 高 |
 | `src/mcwr/infrastructure/heuristic_sizer.py` | 文件 | 无渲染时的卡片高度估算（文本度量启发式） | `HeuristicSizeEstimator` | domain | container/GUI | 低 | 16 | 高 |
 | `src/mcwr/infrastructure/app_paths.py` | 文件 | `%APPDATA%` / `%LOCALAPPDATA%` / 资源目录定位（含测试覆盖变量） | `app_data_dir` `cache_dir` `assets_dir` | 无 | container / 测试 | 低 | 17 | 高 |
 | `src/mcwr/interfaces/gui/session.py` | 文件 | MVVM 边界：持有文档+布局，调用用例，暴露 Qt 信号；唯一知道持久化的地方 | `BoardSession` | application 全体 + persist | main_window | 中：串起全部用例 | 18 | 高 |
-| `src/mcwr/interfaces/gui/main_window.py` | 文件 | 窗口装配：视图、工具栏（缩放 + 主题三态下拉）、右下角按钮、右键菜单、懒渲染队列、窗口状态；`apply_theme` 只重绘与重新排队位图，绝不改布局 | `MainWindow` `apply_theme` | session / board_view / card_item / theme / shared.config / render_card | app.py | 中：曾是槽内异常被吞的重灾区 | 19 | 高 |
-| `src/mcwr/interfaces/gui/card_item.py` | 文件 | 单卡绘制（标题栏/图标/悬停/拖拽/选中态，全部取自主题调色板）、受父约束的拖动、可选位图身体；`set_palette` 只重新排版文本并重绘 | `CardItem` `set_palette` | PySide6 / domain / theme | main_window | 中：绘制与命中测试耦合 | 20 | 高 |
-| `src/mcwr/interfaces/gui/board_view.py` | 文件 | 画布：光标锚定缩放、中键平移、适应视图（缩放上下限夹取）；背景与网格随主题 | `BoardScene` `BoardView` | domain.models(Viewport) / theme | main_window | 低 | 21 | 高 |
+| `src/mcwr/interfaces/gui/main_window.py` | 文件 | 窗口装配：视图、工具栏（缩放 + 主题三态 + **搜索框(T-019)** + 大纲开关）、**可停靠/可收起大纲侧栏(T-020/T-032：收起按钮 + Ctrl+B)**、右下角按钮、右键菜单、窗口状态；**渲染队列＝视口驱动（T-031：外扩半屏 ∩ 屏上宽度 ≥ 160 px ∩ 未折叠隐藏，最近优先，滚动 180 ms 防抖，内存位图 ≤ 256）**；`apply_theme` 只重绘与重新排队位图，`_focus_card` 是唯一的"跳到某卡"实现 | `MainWindow` `apply_theme` `_focus_card` `_render_candidates_now` `_toggle_outline` | session / board_view / card_item / theme / shared.config / build_toc / search_cards / render_card | app.py | 中：曾是槽内异常被吞的重灾区 | 20 | 高 |
+| `src/mcwr/interfaces/gui/card_item.py` | 文件 | 单卡绘制（标题栏/图标/悬停/拖拽/选中态/左侧 3 px 层级色条，全部取自主题调色板）、受父约束的拖动、可选位图身体、代码卡高亮分支；`set_palette` 只重新排版文本并重绘 | `CardItem` `set_palette` | PySide6 / domain / theme / pygments_highlighter / render_card | main_window | 中：绘制与命中测试耦合 | 20 | 高 |
+| `src/mcwr/interfaces/gui/board_view.py` | 文件 | 画布：光标锚定缩放、中键平移、适应视图（缩放上下限夹取）；背景与网格随主题；**网格带设备像素间距下限（<8 px 不画，T-033/D-042：总览整帧 46.6→3.0 ms）** | `BoardScene` `BoardView` `MIN_GRID_DEVICE_STEP` | domain.models(Viewport) / theme | main_window | 低 | 21 | 高 |
 | `src/mcwr/interfaces/gui/app.py` | 文件 | 进程入口：QtWebEngine 预初始化、`--self-check` 自检、多窗口子进程拉起 | `run` `main` `prepare_webengine` `spawn_new_window` `run_self_check` | container / main_window | `packaging/entry_gui.py` | 中：启动顺序敏感 | 22 | 高 |
 | `src/mcwr/container.py` | 文件 | 唯一装配点：构造 reader/parser/store/renderer | `load` `build_web_renderer` `build_layout_store` `new_session_id` | infrastructure | CLI / GUI | 低 | 23 | 高 |
 | `packaging/mcwr.spec` | 文件 | onedir 打包规格：资源 data、隐藏导入、Qt 模块排除 | — | PyInstaller | 构建 | **高**：排除项曾误删 QtWebChannel 致打包后渲染失效 | 24 | 高 |
@@ -108,6 +110,10 @@ MarkdownCardWhiteboardReader/
 | `spikes/NOTES.md` | 文件 | spike 1（块分类）与 spike 3（离屏渲染）结论、坑与选型 | — | — | — | 低 | 27 | 高 |
 | `src/mcwr/interfaces/gui/theme.py` | 文件 | 视觉取值落地：16 个语义色位的两套调色板、字体/字号/度量常量、主题三态解析、WCAG 对比度函数；除 `system_is_dark()` 外不 import Qt（可无 QApplication 单测） | `Theme` `ThemeMode` `Palette` `LIGHT` `DARK` `resolve_theme` `card_fill` `contrast_ratio` | domain.enums | card_item / board_view / main_window / web_renderer(惰性) | 低：取值必须与 `docs/visual-spec.md` 一致（`test_theme.py` 钉住） | 28 | 高 |
 | `src/mcwr/shared/config.py` | 文件 | 用户偏好持久化（当前只有主题模式）：`%APPDATA%\<AppName>\settings.json`，原子写 + 合并写入；读失败降级、写失败返回 False | `load_theme_mode` `save_theme_mode` `settings_path` | infrastructure._atomic / app_paths(惰性) | main_window | 低 | 29 | 高 |
+| `src/mcwr/infrastructure/pygments_highlighter.py` | 文件 | 代码高亮（T-029）：Pygments tokens → 行内上色 HTML；越界颜色回退到该主题 `text_secondary`；未知语言降级 TextLexer。全项目**唯一** import pygments 的模块 | `highlight_html` `token_runs` | pygments / shared.contrast | interfaces.gui.card_item | 低：pygments 无 `py.typed`，mypy 用窄范围 override | 30 | 高 |
+| `src/mcwr/shared/contrast.py` | 文件 | WCAG 2.1 对比度数学（纯函数）：供 theme（spec 对比度表）与 highlighter（颜色回退）共用，避免 infrastructure 反向依赖 interfaces 或复制公式 | `contrast_ratio` `relative_luminance` `MIN_RATIO_AA` `MIN_RATIO_NON_TEXT` | 无 | interfaces.gui.theme / infrastructure.pygments_highlighter / 测试 | 低 | 31 | 高 |
+| `src/mcwr/infrastructure/pygments_highlighter.py` | 文件 | 代码高亮（T-029）：Pygments tokens → 行内上色 HTML；越界颜色回退到该主题 `text_secondary`；未知语言降级 TextLexer。全项目**唯一** import pygments 的模块 | `highlight_html` `token_runs` | pygments / shared.contrast | interfaces.gui.card_item | 低：pygments 无 `py.typed`，mypy 用窄范围 override | 30 | 高 |
+| `src/mcwr/shared/contrast.py` | 文件 | WCAG 2.1 对比度数学（纯函数）：供 theme（spec 对比度表）与 highlighter（颜色回退）共用，避免 infrastructure 反向依赖 interfaces 或复制公式 | `contrast_ratio` `relative_luminance` `MIN_RATIO_AA` `MIN_RATIO_NON_TEXT` | 无 | interfaces.gui.theme / infrastructure.pygments_highlighter / 测试 | 低 | 31 | 高 |
 
 ## 6. 依赖关系图
 

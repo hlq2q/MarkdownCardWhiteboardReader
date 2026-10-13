@@ -151,7 +151,7 @@
 | --- | --- | --- |
 | 数学公式（KaTeX 位图） | 深色下不得出现白底黑字块 | 渲染 shell 的 `#stage` 背景与文字色随主题：浅色 `#FDFDFE`/`#1F2733`，深色 `#2A3038`/`#E6EAF0`；渲染缓存键含主题（否则会命中浅色位图） |
 | Mermaid 位图 | 深色下线条与文字可读 | `mermaid.initialize({theme: "dark"})`（浅色用 `"neutral"`），`fontFamily: "Segoe UI"`；主题同样进缓存键 |
-| 代码高亮 | 深色下关键字与注释可区分 | 高亮配色随主题选择两套（浅色偏亮、深色偏暗），不用同一套硬套 |
+| 代码高亮 | 深色下关键字与注释可区分 | **已实现（T-029）**：`Palette.pygments_style`（浅 `default` / 深 `monokai`）；规则见 D-036 —— 任何 token 颜色对 `code_bg` < 4.5:1 时回退到该主题的 `text_secondary`（实测浅色 `default` 的注释 `#3D7B7B` 仅 4.41:1，故被回退）。落地：`infrastructure/pygments_highlighter.py` |
 | 图片 | 深色下不刺眼、边界可辨 | 图片区域底色 `code_bg`；图片外框 `card_edge` 1 px |
 | 位图与画布缩放 | 深色位图在缩放档位切换时不闪烁 | 沿用现有档位缓存（D-014），仅把主题加入缓存键 |
 
@@ -182,7 +182,8 @@
 - **第 5 级及更深一律沿用第 4 档**，不再继续加深/加亮。
 - 形态：卡片左侧 3 px 竖条，与卡片外边界、选中态并存，不占用内边距。
 - 用户另提供的蓝色 4 档（`#B6D4FE` / `#86B6F6` / `#4F8FEA` / `#1F6FEB`）标注为"适合作为强调色"，**本项目不启用**（D-032）。
-- 状态：待 **T-028** 实现；实现后由测试断言「深度 → 颜色」映射、3 px 宽度、深浅两套取值互不相同。
+- **深度口径（T-028 实现约定）**：`档位 = 卡片树祖先数 + 1` —— 无祖先的最外层/大卡片为 1 档；**不按标题 H 级计算**（一个 H3 卡片若处在二级嵌套，取 2 档）。
+- 状态：**已实现（T-028）**：`Palette.level_bar`（每主题 4 档）+ `theme.level_bar_colour(palette, depth)`（≥4 档夹取到第 4 档）+ `card_item._draw_depth_bar`（3 px，裁剪到圆角，边线画在其上）。测试：`interfaces/gui/test_theme.py`（取值钉住 + 夹取）、`tests/integration/test_level_bar.py`（像素级：每档颜色、3 px 宽、切换主题后变色）。
 
 ## 7. 落地映射与验证
 
@@ -196,3 +197,4 @@
 | 对比度 | 本文件 §1.1 | `python spikes/_out/contrast.py` 复算；`test_theme.py` 在每轮 CI 中重算，低于门槛即失败 |
 | 切换不丢布局 | `interfaces/gui/main_window.py::apply_theme` + `interfaces/gui/session.py` | `test_theme_switch.py`：切换前后 `CardLayout` 逐字段相等、且布局对象身份不变 |
 | 主题偏好持久化 | `shared/config.py` + 工具栏三态下拉 | `test_theme_switch.py::test_the_chosen_mode_is_remembered_across_windows` |
+| 大纲侧栏（T-020/T-032，chrome） | `main_window._build_outline` + `_apply_window_palette`（dock/树用 `app_bg`/`text_primary`/`border`，选中项用 `selected` + `card_bg`；侧栏「收起」按钮用 `QToolButton#outlineCollapse` 显式不透明配色——E-023 就是漏了这条才在深色下读不清） | `tests/integration/test_outline_panel.py::test_the_outline_is_themed_with_the_window`、`::test_the_panel_has_a_collapse_button_that_hides_and_restores_it`；真实平台图 `spikes/_out/outline_collapse_button_{light,dark}.png` |

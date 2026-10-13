@@ -67,6 +67,10 @@ class Palette:
     drag: str
     error_text: str
     error_bg: str
+    pygments_style: str
+    """Pygments style name for code cards (T-029): a style name, not a colour slot."""
+    level_bar: tuple[str, str, str, str]
+    """The 4 depth-bar tiers of visual spec §6.1 (outermost … 4th level and deeper)."""
 
 
 LIGHT: Final[Palette] = Palette(
@@ -89,6 +93,8 @@ LIGHT: Final[Palette] = Palette(
     drag="#D6E7FF",
     error_text="#B3261E",
     error_bg="#FCEEEE",
+    pygments_style="default",
+    level_bar=("#D0D7DE", "#AFB8C1", "#8C959F", "#6E7781"),
 )
 """Light theme: no pure white — the card fill is ``#FDFDFE`` and body text ``#1F2733``."""
 
@@ -112,6 +118,8 @@ DARK: Final[Palette] = Palette(
     drag="#3A4A63",
     error_text="#FF9A93",
     error_bg="#3A2523",
+    pygments_style="monokai",
+    level_bar=("#30363D", "#484F58", "#6E7681", "#8B949E"),
 )
 """Dark theme: no pure black — backgrounds are ``#191D22``/``#1B1F24``, text ``#E6EAF0``."""
 
@@ -153,6 +161,16 @@ CARD_GAP: Final[float] = 16.0
 SECTION_GAP: Final[float] = 24.0
 CHILD_INDENT: Final[float] = 24.0
 MIN_BODY_HEIGHT: Final[float] = 24.0
+LEVEL_BAR_WIDTH: Final[float] = 3.0
+"""Width of the left depth stripe (visual spec §6.1)."""
+LEVEL_BAR_TIERS: Final[int] = 4
+"""Distinct depth buckets; the 5th level and deeper reuse the last one (D-032)."""
+MIN_LEGIBLE_ON_SCREEN_WIDTH: Final[float] = 160.0
+"""Below this on-screen width (logical px) a card counts as a thumbnail: T-031 does not rasterize
+its rich body, because at that size a formula bitmap is as unreadable as its source text and
+rendering it would only queue work. T-033 briefly reused this floor for card painting and the
+measurement showed that was the wrong lever (see D-042) — the name is kept because it says what
+the number means, not which feature happens to use it."""
 
 
 def points(px: float) -> float:
@@ -211,22 +229,11 @@ def uses_shadow(theme: Theme) -> bool:
     return theme is Theme.LIGHT
 
 
-# ------------------------------------------------------------------------- contrast
+def level_bar_colour(palette: Palette, depth: int) -> str:
+    """Colour of the left depth stripe for a card at ``depth`` (0 = outermost card).
 
-
-def relative_luminance(color: str) -> float:
-    """WCAG 2.1 relative luminance of an ``#RRGGBB`` colour."""
-    channels: list[float] = []
-    for offset in (1, 3, 5):
-        raw = int(color[offset : offset + 2], 16) / 255.0
-        channels.append(raw / 12.92 if raw <= 0.03928 else ((raw + 0.055) / 1.055) ** 2.4)
-    red, green, blue = channels
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
-
-
-def contrast_ratio(foreground: str, background: str) -> float:
-    """WCAG 2.1 contrast ratio between two ``#RRGGBB`` colours (1.0 … 21.0)."""
-    first = relative_luminance(foreground)
-    second = relative_luminance(background)
-    lighter, darker = max(first, second), min(first, second)
-    return (lighter + 0.05) / (darker + 0.05)
+    The spec's tier 1 is "最外层 / 大卡片", so ``depth`` selects the tier directly and any
+    level from the 4th on clamps to the last bucket (no further darkening or lightening).
+    """
+    tier = min(max(depth, 0), LEVEL_BAR_TIERS - 1)
+    return palette.level_bar[tier]

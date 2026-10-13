@@ -71,6 +71,24 @@ def _drain(app: QApplication, window: MainWindow, card_ids: tuple[str, ...]) -> 
         time.sleep(0.05)
 
 
+def _show_and_settle(window: MainWindow) -> None:
+    """Give the window real geometry, then let the lazy queue recompute (T-031).
+
+    Only cards on screen and at least ``MIN_RENDER_ON_SCREEN_WIDTH`` wide are rasterized, and
+    an unshown window has no usable viewport — so without this the queue correctly stays empty
+    and this module's "wait for the images" loop would look like a hang. The sample is small
+    enough that its fit zoom keeps the math/mermaid cards above that floor.
+    """
+    window.resize(1400, 900)
+    window.show()
+    window.view.fit_cards()
+    app = QApplication.instance()
+    assert app is not None
+    for _ in range(60):  # the zoom debounce is 400 ms (T-031)
+        app.processEvents()
+        time.sleep(0.01)
+
+
 @pytest.fixture(scope="module")
 def session(tmp_path_factory: pytest.TempPathFactory) -> RenderSession:
     """Open the sample once with an empty render cache and wait for the images.
@@ -94,6 +112,7 @@ def session(tmp_path_factory: pytest.TempPathFactory) -> RenderSession:
     assert app is not None
     card_ids = _web_card_ids(window)
     assert len(card_ids) >= 2, "the sample has a math card and a mermaid card"
+    _show_and_settle(window)
 
     started = time.monotonic()
     _drain(app, window, card_ids)

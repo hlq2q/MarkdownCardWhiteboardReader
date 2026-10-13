@@ -1,6 +1,6 @@
 # ERRORS — 错误、根因与验证
 
-- 最后更新：2026-10-12 06:51:28 +08:00
+- 最后更新：2026-10-12 16:44:23 +08:00
 - 状态枚举：仅 open / fixed / wontfix
 - 说明：本轮（MVP 开发）实际发生的事故。可迁移的通用机制已在各条「防止复发」中指向 `pitfall-playbook` §13，此处只留细节。
 
@@ -271,3 +271,40 @@
 - 验证：①**升级场景的真实渲染**（共享缓存目录 + 旧 `_shell.html` 在场 + 新 payload 以避免 PNG 缓存命中）：`rendered=1 cache_hits=0 failed=0`、目录新增 `_shell-c6f56985d046.html`、**无 TypeError**、只剩两条无害的 WebEngine 提示；②确定性测试 `test_the_shell_file_is_content_addressed` 与 `test_the_shell_url_changes_when_the_shell_changes`；③`test_web_renderer.py` 19/19，全量 `pytest -q` 退出码 0（288 项），`ruff`/`mypy --strict` 干净。
 - 关联任务：T-024
 - 防止复发：①凡是会被浏览器/缓存插手的本地资源，URL 必须随内容变化（内容寻址或版本参数）；固定文件名 = 升级后可能加载旧内容。②"就绪"只证明页面**是旧的可用页面**，不证明它是**当前版本的页面**——探针要显式查新增能力的 `typeof`。③**别拿"共享缓存目录里跑一次"当验证**：先看 `cache_hits`/`rendered`，缓存命中时根本没有走被测路径（本轮我就先踩了一次：那次 `images=2` 其实是两张旧 PNG 的缓存命中，`_shell.html` 的 mtime 没变才露的馅）。
+
+## E-022 代码卡正文里画出了围栏 ```` ``` ````
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：T-029 把代码卡改成"高亮 HTML"渲染后，卡片正文顶部/底部多出 ```` ```python ```` 与 ```` ``` ```` 两行（旧的 Markdown 路径里看不到它们）。这是出真实平台对比图时才发现的，当时单元测试与 GUI 测试全绿。
+- 根因：块 IR 的 `raw_text` **包含围栏**（那是源真相）；旧路径把整段交给 `QTextDocument.setMarkdown`，围栏被 Markdown 导入器当成语法吃掉；新路径把 `raw_text` 直接交给 Pygments lexer，围栏就成了"代码内容"。同类转换早已存在于 Mermaid/公式路径（`_strip_mermaid_fence` / `_strip_math_fences`），但当时没有收敛成公共函数，我复用新路径时漏掉了这一步。
+- 修复：把"拆一层围栏"收敛为 `application/features/render_card/service.py::strip_fenced_block`（支持 ```` ``` ````/`~~~` 与 info string），`_strip_mermaid_fence` 改为它的薄封装；`card_item._code_html` 先拆围栏再高亮。
+- 验证：①真实平台（有字体）截图 `spikes/_out/code_card_light.png`、`code_card_dark.png` 已无围栏；②`tests/integration/test_code_highlight.py::test_the_code_card_shows_the_code_without_its_fence` 断言文档纯文本里没有 ```` ``` ```` 而代码仍在；③`render_card/test_service.py` 新增 6 项围栏测试；④全量 `pytest -q` 退出码 0（333 项）。
+- 关联任务：T-029
+- 防止复发：**"源真相"与"渲染所需"之间的每一次转换都必须显式做一次，且只能有一个实现**；新增渲染路径时先问"这条路上原来是**谁**替我做了哪一步转换"（此处是 Markdown 导入器吃围栏）。这与 E-019 同族（新路径/替身漏掉旧路径的隐式步骤），可提升为通则。另：**GUI 视觉缺陷未必能被具名断言抓住，真实平台出图是必要补充** —— 本轮正是看图才发现。
+
+## E-023 侧栏「收起」按钮在两种主题下都读不清（测试全绿，看图才发现）
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：T-032 给大纲侧栏加了「收起」按钮后，真实平台截图里该按钮**浅色主题下是浅底浅字**（勉强可见）、**深色主题下是浅色底 + 近白文字**（几乎不可读）。而当时 8 项侧栏集成测试全绿——它们断言的是"存在、可点击、会隐藏、状态栏有提示"，没有任何一条看颜色。
+- 根因：窗口样式表只覆盖了 `QMainWindow/QToolBar/QStatusBar/QDockWidget/QTreeWidget`（T-020 加的），**新控件 `QToolButton` 没进样式表**，于是它继续用 Qt 默认样式：底色来自原生风格的按钮面板（浅色），文字色与深色主题不匹配。第一版修复只写了 `background: transparent`，深色下仍是浅色底（transparent 在该控件上没按预期让 dock 底色透出），等于只修了一半——**这一版同样"测试全绿"**。
+- 修复：给按钮显式 `objectName = "outlineCollapse"`，并把样式收敛到该选择器、用**不透明**配色（`color: text_primary; background: app_bg; border: 1px solid border`，hover 用 `card_bg`/`selected`）。限定对象名同时避免影响 dock 标题栏自带的浮动/关闭按钮。
+- 验证：①真实平台逐按钮裁剪图 `spikes/_out/outline_collapse_button_{light,dark}.png` **肉眼确认两种主题都可读**，且亮度极差 light 204 / dark 203（同批整窗图 `outline_panel_{light,dark}.png`、收起态 `outline_panel_light_collapsed.png`）；②`test_outline_panel.py` 增两处断言：按钮 `objectName` 为 `outlineCollapse`、样式表含该选择器与当前主题色（深色测试同样断言）——防"样式规则被删掉又回到默认配色"；③全量 `pytest -q` 退出码 0（382 项），`ruff`/`mypy` 干净。
+- 关联任务：T-032
+- 防止复发：①**新增任何会露脸的 Qt 控件，必须同时进 `_apply_window_palette` 的样式表**（本轮就是漏了），并在两种主题下各出一张真实平台图；②"transparent 背景"在原生风格控件上不保证透出父底色——**要可见就得显式给不透明配色**；③**第一条修复也必须看图复验**：本轮第一版修复后我差点就收工，是第二次看图才发现深色仍是浅底（与 E-022 同族：具名断言不作数，像素才算数）。
+
+## E-024 我按错误的成本模型改了代码（T-033），以及 PySide 虚函数 patch 的假阴性
+
+- 日期：2026-10-12
+- 状态：fixed
+- 现象：T-018 报出"总览缩放 21–23 fps"，我据此给出成本模型"代价 ≈ 可见卡片数 × 0.6 ms"，并实现"缩得太小的卡不画正文"（T-033 原方案）。实测改善为 **0**（47.1 ms vs 47.0 ms）。更糟的是，我随后三次探针都得出"网格与本问题无关"的结论——**那三次结论是假的**。
+- 根因（两件独立的事）：
+  1. **成本模型没有验证就动手**：0.6 ms/卡 是我从"72 张可见 / 46.6 ms"倒推出来的，从未直接给单张卡的 `paint()` 计时。真实值 **0.059 ms/张**（10% 缩放），差一个数量级——46 ms 里真正属于卡片的部分只有约 4 ms。
+  2. **PySide6 里 monkeypatch C++ 虚函数无效**：`BoardScene.drawBackground` 与 `QGraphicsView.paintEvent` 都是 C++ 虚函数，Shiboken 在类创建时解析虚表，事后改 Python 类属性不参与派发。我的"关掉网格 → 时间不变"因此是假阴性。当时探针已经打印 `grid lines 0`（补丁根本没跑）——**证据就在眼前，我没看**。
+  实际原因见 D-042：`BoardScene.drawBackground` 在 fit 缩放下要画 492 条贯穿全屏的抗锯齿网格线 ≈ 40 ms。
+- 修复：①整段回退卡片 LOD（不为 0 改善改观感）；②改为网格设备像素下限 `MIN_GRID_DEVICE_STEP = 8.0`；③结论与过程写入 `docs/performance.md` §4（含被推翻的假设）与 `DECISIONS.md` D-042。
+- 验证：fit 整视口重绘 **46.6 → 3.0 ms**、1000 卡 pan 45.7 → 3.7 ms、100% 不变（8.8 → 8.2 ms，背景颜色数一致）；`tests/integration/test_grid_detail.py` 5 项；前后对比图 `spikes/_out/grid_floor_{before,after}.png` 用**像素统计**确认（预览缩放会产生摩尔纹假象，肉眼看着"两边都有网格"）。
+- 关联任务：T-033 T-018
+- 防止复发：①**先测量再优化**：任何"X 是瓶颈"的判断都要有对 X 的**直接**测量（单次调用计时），不能靠总量倒推；倒推出来的系数一律先当作假设。②**性能改动必须能给出"改前/改后"两个数**，改完没有变化就**回退**，不要留在代码里当"优化"。③**对 C++ 虚函数（Qt 的大多数可覆写方法）不要用 monkeypatch**：改源码或子类；若必须 patch，先证明它执行过（计数器/日志），并把"无变化"的结论建立在**补丁确实生效**之上——本轮 `grid lines 0` 就是漏掉的那一步。④优先选不依赖虚函数派发的真实开关做隔离（`CacheBackground`、空场景、隐藏 item 都是有效的 API 级信号）。⑤**看图也要用像素复核**：缩放预览会制造不存在/掩盖存在的图案。
+

@@ -13,6 +13,7 @@ from pathlib import Path
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QStyleOptionGraphicsItem
 
+from mcwr.domain.enums import CardKind
 from mcwr.domain.models import MAX_CARDS
 from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.main_window import MainWindow
@@ -52,13 +53,21 @@ def _write_document(path: Path, *, headings: int) -> Path:
     return path
 
 
-def _drain(window: MainWindow) -> None:
+def _drain(window: MainWindow, *, minimum_seconds: float = 0.6) -> None:
+    """Run the deferred render queue to completion, or fail instead of hanging.
+
+    Since T-031 the queue is *debounced* (zoom 400 ms, scroll 180 ms), so a drain that only
+    spins the event loop would return before anything was ever queued.
+    """
     app = QApplication.instance()
     assert app is not None
-    deadline = time.monotonic() + 10.0
+    started = time.monotonic()
+    deadline = started + 10.0
     while time.monotonic() < deadline:
         app.processEvents()
-        if not any(item.is_pending for item in window.card_items.values()):
+        if time.monotonic() - started >= minimum_seconds and not any(
+            item.is_pending for item in window.card_items.values()
+        ):
             return
         time.sleep(0.01)
     raise AssertionError("the body render queue never drained")
@@ -93,7 +102,7 @@ def _rich_card(window: MainWindow, kind: str) -> CardItem:
 
 
 def test_a_document_of_exactly_the_limit_is_opened_with_rich_rendering(tmp_path: Path) -> None:
-    """The boundary itself: 200 cards is not degraded (D-023)."""
+    """The boundary itself: the limit is not "degraded" (D-040)."""
     document = _write_document(tmp_path / "at-limit.md", headings=MAX_CARDS - 3)
     renderer = RecordingRenderer()
     window = MainWindow(persist=False, renderer=renderer)  # type: ignore[arg-type]
@@ -101,6 +110,16 @@ def test_a_document_of_exactly_the_limit_is_opened_with_rich_rendering(tmp_path:
     assert window.open_path(document) is True
     assert window.session.card_count == MAX_CARDS
     assert window.session.over_limit is False
+
+    # Since T-031 rendering is viewport-bound, so the boundary must be probed at a zoom where
+    # a rich card is big enough on screen: fit zoom would (correctly) render nothing.
+    rich = next(
+        item
+        for item in window.card_items.values()
+        if item.card.kind is CardKind.MATH_BLOCK
+    )
+    window.view.set_zoom(100.0)
+    window.view.centerOn(rich.sceneBoundingRect().center())
     _drain(window)
 
     assert renderer.calls, "at the limit the math/mermaid cards are still rasterized"

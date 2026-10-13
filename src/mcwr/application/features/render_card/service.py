@@ -108,9 +108,31 @@ def _strip_math_fences(raw_text: str) -> str:
     return text
 
 
-def _strip_mermaid_fence(raw_text: str) -> str:
-    """Drop the ```` ```mermaid ````/```` ``` ```` fence, keeping the diagram body verbatim."""
+def strip_fenced_block(raw_text: str) -> str:
+    """Drop one fence pair (```` ``` ```` or ```` ~~~ ````) around a block body.
+
+    The block IR keeps the raw text *including* its fence — that is the source truth — so
+    every consumer that draws the body has to unwrap it exactly once. The Markdown importer
+    did that implicitly; the renderers (Mermaid, and since T-029 the code highlighter) work
+    on the bare body and would otherwise draw the fence as content.
+    """
     lines = raw_text.strip().splitlines()
-    if len(lines) >= 2 and lines[0].lstrip().startswith("```") and lines[-1].strip() == "```":
+    if len(lines) >= 2 and _is_fence_open(lines[0]) and _is_fence_close(lines[-1]):
         return "\n".join(lines[1:-1]).strip()
     return raw_text.strip()
+
+
+def _is_fence_open(line: str) -> bool:
+    """Whether a line opens a fenced block (an info string may follow the fence)."""
+    return line.lstrip().startswith(("```", "~~~"))
+
+
+def _is_fence_close(line: str) -> bool:
+    """Whether a line is a bare closing fence (fence characters only)."""
+    stripped = line.strip()
+    return stripped.startswith(("```", "~~~")) and set(stripped) <= {"`", "~"}
+
+
+def _strip_mermaid_fence(raw_text: str) -> str:
+    """Backwards-compatible name for the Mermaid path, which had this logic first."""
+    return strip_fenced_block(raw_text)

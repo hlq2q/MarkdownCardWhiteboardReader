@@ -79,12 +79,24 @@ def test_item_3_the_mature_library_inventory_is_recorded() -> None:
 
 
 def test_item_4_a_card_shows_a_placeholder_while_its_image_is_pending() -> None:
-    """D-022 item 4: async render with a visible placeholder instead of a silent stall."""
+    """D-022 item 4: async render with a visible placeholder instead of a silent stall.
+
+    Since T-031 only cards that are on screen (and big enough) are queued, so the test puts the
+    viewport on a rich card at 100% and runs the queue pass the debounce would run.
+    """
     window = MainWindow(persist=False, renderer=NullRenderer())  # type: ignore[arg-type]
+    window.show()
     assert window.open_path(SAMPLE) is True
 
-    queued = _web_card_ids(window)
-    assert queued, "the sample has cards that need rendering"
+    rich = _web_card_ids(window)
+    assert rich, "the sample has cards that need rendering"
+    target = window.card_items[rich[0]]
+    window.view.set_zoom(100.0)
+    window.view.centerOn(target.sceneBoundingRect().center())
+    window._queue_body_images()
+
+    queued = list(window._image_queue)
+    assert target.card.card_id in queued, "the card under the viewport is queued"
     for card_id in queued:
         assert window.card_items[card_id].is_pending is True, "queued cards announce progress"
 
