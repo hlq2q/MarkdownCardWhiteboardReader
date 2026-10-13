@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from PySide6.QtCore import QLineF, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QLineF, QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -21,6 +21,9 @@ from mcwr.interfaces.gui.card_item import CardItem
 from mcwr.interfaces.gui.theme import GRID_ALPHA, GRID_STEP, LIGHT, Palette
 
 MIN_GRID_DEVICE_STEP: Final[float] = 8.0
+
+PAN_MARGIN: Final[float] = 600.0
+"""Empty canvas kept around the cards so the middle-button pan has somewhere to go (T-040)."""
 """Grid spacing (device px) below which the grid is not drawn at all (T-033).
 
 A different quantity from ``theme.MIN_LEGIBLE_ON_SCREEN_WIDTH`` on purpose: that one is a card
@@ -274,7 +277,11 @@ class BoardView(QGraphicsView):
         self.customContextMenuRequested.emit(event.pos())
         event.accept()
 
-    def vetoes_context_menu(self, modifiers: Qt.KeyboardModifiers) -> bool:
+    def suppresses_context_menu(self) -> bool:
+        """True while a marquee selection is up, so it never opens the card menu (D-052)."""
+        return self._marquee_selection or self._marquee_dragged or self._menu_suppressed
+
+    def vetoes_context_menu(self, modifiers: Qt.KeyboardModifier) -> bool:
         """Whether a context-menu request must be dropped (T-051/T-057).
 
         Two owners of the right button: a marquee selection (D-052), and Ctrl -- half of the
