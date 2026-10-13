@@ -178,3 +178,13 @@ def test_a_plain_wheel_still_zooms_the_canvas(window: MainWindow) -> None:
     _wheel(window, _body_point(window, "G"), control=False)
 
     assert window.view.transform().m11() > before, "Ctrl is what changes the card, not the wheel"
+
+
+def test_a_ctrl_right_click_is_vetoed_before_the_menu_can_open(window: MainWindow) -> None:
+    """The menu used to open on the first click and swallow the reset gesture (T-057).
+
+    Asserting the veto keeps this test off the modal menu path: opening the real menu offscreen
+    blocks the event loop, which is exactly what used to happen to the user's second click.
+    """
+    assert window.view.vetoes_context_menu(Qt.KeyboardModifier.ControlModifier) is True
+    assert window.view.vetoes_context_menu(Qt.KeyboardModifier.NoModifier) is False

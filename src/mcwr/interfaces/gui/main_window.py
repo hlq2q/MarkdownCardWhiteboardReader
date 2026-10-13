@@ -10,6 +10,7 @@ from typing import Final, cast
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDockWidget,
     QFileDialog,
@@ -574,7 +575,10 @@ class MainWindow(QMainWindow):
         self.view.zoom_changed.connect(self._on_zoom_changed)
         for bar in (self.view.horizontalScrollBar(), self.view.verticalScrollBar()):
             bar.valueChanged.connect(self._on_viewport_scrolled)
-        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        # DefaultContextMenu, not CustomContextMenu: with the latter Qt emits the request from
+        # QWidget::event() and never calls contextMenuEvent(), so a modifier-based veto (Ctrl here)
+        # could not work. The view emits the request itself instead (T-057/T-062).
+        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         self.view.customContextMenuRequested.connect(self._show_context_menu)
         # The board also resizes on its own (sidebar width), so the floating strip follows
         # the view and not just the window (T-035).
@@ -959,8 +963,8 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- context menu
 
     def _show_context_menu(self, position: QPoint) -> None:
-        if self.view.suppresses_context_menu():
-            return  # a marquee selection owns the right button (D-052)
+        if self.view.vetoes_context_menu(QApplication.keyboardModifiers()):
+            return  # a marquee selection, or Ctrl, which owns the right button (D-052/T-057)
         item = self.view.itemAt(position)
         menu = QMenu(self)
         if isinstance(item, CardItem):
