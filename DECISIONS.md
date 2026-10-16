@@ -609,3 +609,17 @@
   **与 D-061 保留的原始历史（31 提交）不共享祖先**；③ 恢复素材（会话记录、原始快照、`original-git-T030`）
   位于工作区 `mcwr-recovery/`，**未上传**；④ 今后 `git push origin main` 即可。
 - **关联**：T-070；E-037；D-035（被修订）；D-061。
+
+## D-063 卡片正文的绘制上下文由应用调色板提供，不继承操作系统配色（accepted，2026-10-13）
+
+- **背景**：`QTextDocument.drawContents()` 内部用 `QGuiApplication.palette()` 构造 `PaintContext`。
+  Windows 深色模式 + 应用浅色主题时，未被文档样式表显式钉色的**正文段落**会画成浅灰字落在浅色卡面上
+  （用户报的“部分字体与背景对比不明显”）；标题、链接、代码因样式表钉色而正常，故只有“部分”。
+- **决策**：`CardItem._draw_body_text` **始终**构造显式 `PaintContext`，其 `palette` 由本应用 `Palette`
+  经 `_document_palette()` 装配（`Text`/`WindowText`=`text_primary`，`Base`/`Window`=`card_bg`，
+  `Highlight`=`selected`，`HighlightedText`=`card_bg`）；选中高亮复用同一上下文。文档样式表不变。
+- **理由**：卡片内容必须属于应用主题，而不是宿主操作系统的主题；样式表钉色与上下文配色各司其职，
+  前者管富文本元素，后者管默认正文与选区。
+- **影响**：新增回归测试 `tests/integration/test_card_body_colour.py`（把应用调色板换成深色后，
+  正文着墨不得变化；已做变异检验确认会红）。旧实现（直接 `drawContents`）不得再被引入。
+- **关联**：T-071；E-038；`docs/visual-spec.md` §1.1（调色板本身达标）。

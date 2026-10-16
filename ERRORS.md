@@ -377,3 +377,16 @@
 - **防止复发**：任何构建/打包输出目录（`dist/`、`build/`、`packaging/Output/`）都必须在 `.gitignore` 中；
   首次推送前先跑一遍"受控文件里最大的几个"与"历史里最大的 blob"检查（`git ls-files -z | xargs -0 du -h | sort -rh`）。
   需要分发安装包时用 GitHub Release 附件，而不是入库。
+
+## E-038 按“对比度不达标”去改装饰性槽位与用户给定的层级条，推翻了既定决策（fixed，2026-10-13）
+
+- **现象**：接到“浅色主题下部分字体与背景对比不明显”后，我把 `border`（1.53）、`divider`（1.49）、
+  `level_bar` 前三档（1.43/1.98/2.99）以及 `pygments_style`（default → xcode）一并改掉；随后三项测试变红。
+- **根因**：只看数值、没有先读已定决策。`docs/visual-spec.md` §12 明确 `border`/`divider` 是**装饰性**槽位，
+  “必须可辨”由 `card_edge`(3.69/3.71) 与 `selected`(4.81/5.53) 承担，并记录“首版曾用 #C7D0DA 1.53 不达标，故拆成两个槽位”；
+  `level_bar` 四色是 **T-028 用户给定值**（`test_theme.py` 用例名即“the four values the user gave”）；
+  代码块的对比度则早由 `pygments_highlighter._resolved_colour` 兜底（低于 `MIN_RATIO_AA` 回落 `text_secondary`）。
+- **修复**：四处全部回退到原值（改回后相关测试自动转绿）；真正的根因另见 T-071（正文继承操作系统配色）。
+- **验证**：`theme.py` 与主干一致；`test_theme.py` / `test_pygments_highlighter.py` 恢复通过；全量 0 失败。
+- **防止复发**：**改任何配色前，先读 `docs/visual-spec.md` 的对比度章节与相关 `T-xxx`/`D-xxx`**，
+  确认该槽位是“必须可辨”还是“装饰性”，以及数值是否由用户给定；数值不达标不等于可以改。
