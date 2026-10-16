@@ -21,6 +21,7 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QGraphicsView
 
 from mcwr.interfaces.gui.main_window import MainWindow
+from mcwr.interfaces.gui.theme import HEADER_HEIGHT  # single source (T-077)
 
 DOCUMENT = """# G
 
@@ -42,8 +43,6 @@ text b
 
 text h
 """
-
-HEADER_HEIGHT = 34.0
 
 
 class StubRenderer:

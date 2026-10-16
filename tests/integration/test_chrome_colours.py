@@ -138,3 +138,56 @@ def test_hovering_the_toc_card_keeps_it_dark(window: MainWindow) -> None:
     finally:
         item._dragging = False
     assert dragged.lightnessF() < 0.4, f"dragging paints the TOC card {dragged.name()} (T-075)"
+
+
+REQUIRED_SELECTORS = (
+    "QMainWindow",
+    "QToolBar",
+    "QStatusBar",
+    "QDockWidget",
+    "QDockWidget::title",
+    "QDockWidget::close-button",
+    "QDockWidget::float-button",
+    "QMenuBar",
+    "QMenu",
+    "QToolTip",
+    "QLabel",
+    "QToolButton",
+    "QComboBox",
+    "QLineEdit",
+    "QScrollBar",
+    "QPushButton",
+    "QTreeWidget",
+)
+
+
+def test_the_window_stylesheet_covers_every_chrome_widget(window: MainWindow) -> None:
+    """Any widget left out keeps the OS palette -- exactly how T-073/T-077 happened (D-064).
+
+    Add a selector here whenever the chrome gains a widget; the list is the reason the
+    "light app on dark Windows" and "light app on light Windows" cases can be trusted.
+    """
+    sheet = window.styleSheet()
+    missing = [selector for selector in REQUIRED_SELECTORS if selector not in sheet]
+    assert not missing, f"these chrome widgets would fall back to the OS palette: {missing}"
+
+
+REQUIRED_SELECTORS = (
+    "QMainWindow",
+    "QToolBar",
+    "QStatusBar",
+    "QDockWidget",
+    "QDockWidget::title",
+    "QDockWidget::close-button",
+    "QDockWidget::float-button",
+    "QMenuBar",
+    "QMenu",
+    "QToolTip",
+    "QLabel",
+    "QToolButton",
+    "QComboBox",
+    "QLineEdit",
+    "QScrollBar",
+    "QPushButton",
+    "QTreeWidget",
+)

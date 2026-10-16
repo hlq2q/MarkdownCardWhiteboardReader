@@ -14,8 +14,7 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QGraphicsView
 
 from mcwr.interfaces.gui.main_window import MainWindow
-
-HEADER_HEIGHT = 34.0
+from mcwr.interfaces.gui.theme import HEADER_HEIGHT  # single source (T-077)
 
 DOCUMENT = """# G
 

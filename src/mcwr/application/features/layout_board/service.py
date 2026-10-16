@@ -34,7 +34,7 @@ class LinearLayoutOptions:
     gap: float = 8.0
     padding: float = 6.0
     header_height: float = 22.7
-    min_height: float = 56.0
+    min_height: float = 45.0  # 22.7 title bar + a body line (T-076 reduced the header 1/3)
 
 
 def _ancestor_scale(tree: CardTree, layouts: Mapping[CardId, CardLayout], card_id: CardId) -> float:

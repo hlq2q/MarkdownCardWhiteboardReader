@@ -18,10 +18,9 @@ from PySide6.QtWidgets import QApplication, QGraphicsView
 from mcwr.application.features.layout_board.grid import GRID_STEP
 from mcwr.interfaces.gui.main_window import MainWindow
 from mcwr.interfaces.gui.theme import GRID_STEP as PAINTED_GRID_STEP
+from mcwr.interfaces.gui.theme import HEADER_HEIGHT  # single source (T-077)
 
 DOCUMENT = "# G\n\ntext g\n\n## P\n\ntext p\n"
-
-HEADER_HEIGHT = 34.0
 
 
 class StubRenderer:
