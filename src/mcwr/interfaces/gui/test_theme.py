@@ -124,7 +124,8 @@ def test_card_fill_follows_the_spec_per_kind() -> None:
         assert card_fill(palette, CardKind.CODE) == palette.code_bg
         assert card_fill(palette, CardKind.IMAGE) == palette.code_bg
         assert card_fill(palette, CardKind.TABLE) == palette.table_bg
-        for kind in (CardKind.MATH_BLOCK, CardKind.MERMAID, CardKind.TASK_LIST, CardKind.TOC):
+        # TOC is the exception: it keeps the dark fill in both themes (T-074).
+        for kind in (CardKind.MATH_BLOCK, CardKind.MERMAID, CardKind.TASK_LIST):
             assert card_fill(palette, kind) == palette.card_bg
 
 

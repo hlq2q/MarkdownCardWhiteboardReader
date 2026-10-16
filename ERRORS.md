@@ -390,3 +390,13 @@
 - **验证**：`theme.py` 与主干一致；`test_theme.py` / `test_pygments_highlighter.py` 恢复通过；全量 0 失败。
 - **防止复发**：**改任何配色前，先读 `docs/visual-spec.md` 的对比度章节与相关 `T-xxx`/`D-xxx`**，
   确认该槽位是“必须可辨”还是“装饰性”，以及数值是否由用户给定；数值不达标不等于可以改。
+
+## E-039 又一次坐标空间混用：用窗口截图配视口坐标取像素（fixed，2026-10-13）
+
+- **现象**：新写的 TOC 像素测试取到 `#e3e8ee`（画板底色）而不是卡片底色，断言失败。
+- **根因**：`window.grab()` 给的是**窗口**坐标（含工具栏/大纲面板偏移），而 `view.mapFromScene()` 给的是**视口**坐标；
+  两者混用 ⇒ 采样点落到卡片之外。与之前 E-035 里 `mapFromScene`/`mapToScene` 方向弄反属同一类错误。
+- **修复**：改为 `window.view.viewport().grab()`，与 `mapFromScene()` 同处一个坐标空间。
+- **验证**：三个新测试全绿；全量 480 通过。
+- **防止复发**：**任何"截图 + 坐标取点"的测试，先写出该坐标属于哪个空间（window / viewport / scene / item），
+  并让截图与取点来自同一空间**；跨空间时必须显式换算（`viewport().mapTo(window, p)`）。

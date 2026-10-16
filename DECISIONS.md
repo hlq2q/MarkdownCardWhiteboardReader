@@ -623,3 +623,17 @@
 - **影响**：新增回归测试 `tests/integration/test_card_body_colour.py`（把应用调色板换成深色后，
   正文着墨不得变化；已做变异检验确认会红）。旧实现（直接 `drawContents`）不得再被引入。
 - **关联**：T-071；E-038；`docs/visual-spec.md` §1.1（调色板本身达标）。
+
+## D-064 应用的界面配色全部由自身调色板提供；[TOC] 卡恒为暗色（accepted，2026-10-13）
+
+- **背景**：T-071 修掉了卡片正文继承操作系统配色；随后用户报告"软件本身的字体与背景对比不明显"，
+  offscreen 截图证实"浅色应用 + 深色 Windows"时**工具栏与菜单栏整条变黑** —— 因为窗口样式表只命名了少数控件。
+- **决策**：①`MainWindow._apply_window_palette` 的样式表**覆盖界面用到的每一个控件**
+  （QMainWindow/QToolBar/QStatusBar/QDockWidget/QMenuBar/QMenu/QToolTip/QLabel/QToolButton/QComboBox
+  及其弹层/QLineEdit/QScrollBar/QTreeWidget，含 hover/pressed/checked/disabled 与菜单选中态），
+  **不允许任何界面控件落到系统 QPalette**；②markdown 的 `[TOC]` 卡背景**恒用暗色**（`DARK.card_bg`），
+  其内容取暗色调色板（`content_palette()`），与会话主题无关。
+- **理由**：应用主题必须是唯一配色来源（T-071 同一原则的界面侧）；`[TOC]` 是导航面，用户明确要求恒定暗色。
+- **影响**：新增 `tests/integration/test_chrome_colours.py`（工具栏带亮度 + TOC 填色契约 + 像素），
+  并把 `test_theme.py` 的"普通卡底色"循环排除 TOC。今后任何新控件都必须进样式表。
+- **关联**：T-073；T-074；E-039；D-063（正文侧的同一条原则）。

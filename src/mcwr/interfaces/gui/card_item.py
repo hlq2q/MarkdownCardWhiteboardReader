@@ -60,6 +60,7 @@ from mcwr.interfaces.gui.theme import (
     UI_FONT_FALLBACK,
     Palette,
     card_fill,
+    content_palette,
     level_bar_colour,
     points,
     uses_shadow,
@@ -339,8 +340,9 @@ class CardItem(QGraphicsObject):
         if scale == self._scale:
             return
         self._scale = max(scale, 0.05)
+        content = content_palette(self._palette, self.card.kind)
         self._document = _build_document(
-            self.card, self._blocks, self._palette, self._toc, scale=self._scale
+            self.card, self._blocks, content, self._toc, scale=self._scale
         )
         self._document.setTextWidth(self.body_rect().width())
         self.update()
@@ -374,7 +376,9 @@ class CardItem(QGraphicsObject):
         if palette.theme is self._palette.theme:
             return
         self._palette = palette
-        self._document = _build_document(self.card, self._blocks, palette, self._toc)
+        self._document = _build_document(
+            self.card, self._blocks, content_palette(palette, self.card.kind), self._toc
+        )
         self.update()
 
     def anchor_at(self, point: QPointF) -> str:
