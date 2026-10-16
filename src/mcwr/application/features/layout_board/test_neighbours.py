@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mcwr.application.features.layout_board.grid import GRID_STEP
 from mcwr.application.features.layout_board.neighbours import snap_delta
+from mcwr.interfaces.gui import theme
 
 MOVING = (200.0, 300.0, 100.0, 50.0)
 """The dragged card: x 200..300, y 300..350."""
@@ -73,4 +74,4 @@ def test_the_tolerance_and_step_can_be_overridden() -> None:
 
 
 def test_the_default_step_is_the_painted_grid() -> None:
-    assert GRID_STEP == 34.0  # one title bar (T-061)
+    assert GRID_STEP == theme.GRID_STEP == theme.HEADER_HEIGHT  # T-061/T-076

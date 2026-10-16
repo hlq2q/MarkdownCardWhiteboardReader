@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication
 
 from mcwr.domain.enums import CardKind
 from mcwr.interfaces.gui.main_window import MainWindow
+from mcwr.interfaces.gui.theme import HEADER_HEIGHT, PADDING
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = REPO_ROOT / "spikes" / "samples" / "functional-test.md"
@@ -81,5 +82,9 @@ def test_the_long_table_and_the_code_card_fit_their_content(window: MainWindow) 
             checked["code"] = item.card_height - measured
     assert checked, "the sample must contain a table and a code card"
     # header + two paddings above the measured body, i.e. nothing clipped and nothing extra
-    assert 40.0 <= checked["table"] <= 60.0
-    assert 40.0 <= checked["code"] <= 60.0
+    reserve = HEADER_HEIGHT + 2 * PADDING
+    # Not clipped: the body keeps at least its measured height; nothing extra: at most the
+    # reserved header+paddings plus the few px the re-measure can drift (T-076).
+    for name, slack in checked.items():
+        assert slack >= reserve - 1.0, f"{name} body is clipped"
+        assert slack <= reserve + 6.0, f"{name} card reserves more than its header+paddings"

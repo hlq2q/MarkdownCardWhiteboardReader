@@ -33,7 +33,7 @@ class LinearLayoutOptions:
     indent: float = 8.0
     gap: float = 8.0
     padding: float = 6.0
-    header_height: float = 34.0
+    header_height: float = 22.7
     min_height: float = 56.0
 
 
