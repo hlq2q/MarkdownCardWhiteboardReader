@@ -155,6 +155,8 @@ FONT_PX: Final[dict[str, float]] = {
 HEADER_HEIGHT: Final[float] = 22.7
 PADDING: Final[float] = 6.0
 CARD_RADIUS: Final[float] = 8.0
+SHADOW_DEPTH: Final[float] = 3.0
+"""How deep the inner bottom shadow runs inside the card (T-082)."""
 BUTTON_RADIUS: Final[float] = 6.0
 SELECTED_WIDTH: Final[float] = 2.5
 BORDER_WIDTH: Final[float] = 1.0
