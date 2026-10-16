@@ -30,7 +30,7 @@ class LinearLayoutOptions:
     section_width: float = 960.0
     # T-060: halved from 24, so a child card sits 12 px inside its parent on the left *and* the
     # right (the child's width is the box minus two indents).
-    indent: float = 12.0
+    indent: float = 8.0
     gap: float = 8.0
     padding: float = 6.0
     header_height: float = 34.0

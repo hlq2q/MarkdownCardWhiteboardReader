@@ -20,9 +20,9 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
-    QGuiApplication,
     QPainter,
     QPainterPath,
+    QPalette,
     QPen,
     QPixmap,
     QTextCursor,
@@ -302,19 +302,23 @@ class CardItem(QGraphicsObject):
         the layout.
         """
         rect = QRectF(0, 0, self.body_rect().width(), 1e6)
-        if not self.has_selection():
-            self._document.drawContents(painter, rect)
-            return
-        assert self._cursor is not None
+        # Always an explicit context: drawContents() would build one from QGuiApplication.palette(),
+        # i.e. the operating system's colours. In Windows dark mode with the app on the light
+        # theme
+        # that paints light-grey body text onto the light card -- the low-contrast text the user
+        # reported -- while headings, links and code stay readable: the stylesheet
+        # pins those explicitly. The same context carries the selection highlight below.
         context = QAbstractTextDocumentLayout.PaintContext()
         context.clip = rect
-        context.palette = QGuiApplication.palette()  # the same palette drawContents() would use
-        selection = QAbstractTextDocumentLayout.Selection()
-        selection.cursor = self._cursor
-        highlight = QColor(self._palette.selected)
-        highlight.setAlpha(90)
-        selection.format.setBackground(QBrush(highlight))
-        context.selections = [selection]
+        context.palette = _document_palette(self._palette)
+        if self.has_selection():
+            assert self._cursor is not None
+            selection = QAbstractTextDocumentLayout.Selection()
+            selection.cursor = self._cursor
+            highlight = QColor(self._palette.selected)
+            highlight.setAlpha(90)
+            selection.format.setBackground(QBrush(highlight))
+            context.selections = [selection]
         self._document.documentLayout().draw(painter, context)
 
     def header_height(self) -> float:
@@ -572,6 +576,18 @@ def _font(family: str, px: float, *, bold: bool = False, tracking_px: float = 0.
     if tracking_px:
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, tracking_px)
     return font
+
+
+def _document_palette(palette: Palette) -> QPalette:
+    """Our own colours as a QPalette: the card body must never inherit the OS theme (T-071)."""
+    document_palette = QPalette()
+    document_palette.setColor(QPalette.ColorRole.Text, QColor(palette.text_primary))
+    document_palette.setColor(QPalette.ColorRole.WindowText, QColor(palette.text_primary))
+    document_palette.setColor(QPalette.ColorRole.Base, QColor(palette.card_bg))
+    document_palette.setColor(QPalette.ColorRole.Window, QColor(palette.card_bg))
+    document_palette.setColor(QPalette.ColorRole.Highlight, QColor(palette.selected))
+    document_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(palette.card_bg))
+    return document_palette
 
 
 def _stylesheet(palette: Palette) -> str:
