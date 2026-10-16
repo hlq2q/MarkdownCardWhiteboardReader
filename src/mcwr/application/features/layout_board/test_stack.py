@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import pytest
+
 from mcwr.application.features.layout_board.service import (
     layout_board,
     relayout_subtree,
@@ -24,9 +26,9 @@ from mcwr.domain.enums import CardKind
 from mcwr.domain.models import Block, Card, CardLayout, CardTree
 
 GAP = 8.0
-ROW = 86.0
-PARENT_HEIGHT = 222.0  # 34 header only + 8 gap + 86 + 8 gap + 86
-GRANDPARENT_HEIGHT = 264.0  # 34 header only + 8 gap + P
+ROW = 74.7  # 22.7 title bar + 52 body (T-076; was 34 + 52)
+PARENT_HEIGHT = 188.1  # 22.7 header only + 8 gap + 74.7 + 8 gap + 74.7 (T-076)
+GRANDPARENT_HEIGHT = 218.8  # 22.7 header only + 8 gap + P (T-076)
 
 
 class FixedEstimator:
@@ -79,11 +81,11 @@ def _face(layouts: Mapping[str, CardLayout]) -> dict[str, tuple[float, float]]:
 
 def test_the_fixture_matches_the_reported_shape() -> None:
     _, layouts = board()
-    assert layouts["A"].height == ROW
-    assert layouts["P"].height == PARENT_HEIGHT
-    assert layouts["G"].height == GRANDPARENT_HEIGHT
-    assert layouts["B"].y == layouts["A"].y + ROW + GAP
-    assert layouts["H"].y == layouts["G"].y + GRANDPARENT_HEIGHT + GAP
+    assert layouts["A"].height == pytest.approx(ROW)
+    assert layouts["P"].height == pytest.approx(PARENT_HEIGHT)
+    assert layouts["G"].height == pytest.approx(GRANDPARENT_HEIGHT)
+    assert layouts["B"].y == pytest.approx(layouts["A"].y + ROW + GAP)
+    assert layouts["H"].y == pytest.approx(layouts["G"].y + GRANDPARENT_HEIGHT + GAP)
 
 
 def test_propagate_height_carries_the_change_up_the_chain() -> None:
@@ -93,12 +95,12 @@ def test_propagate_height_carries_the_change_up_the_chain() -> None:
     layouts["A"].detached = True
     packed = relayout_subtree(tree, layouts, "P", blocks={}, estimator=FixedEstimator())
     delta = packed["P"].height - before["P"][1]
-    assert delta == -(ROW + GAP)
+    assert delta == pytest.approx(-(ROW + GAP))
     propagate_height(tree, packed, "P", delta)
-    assert packed["P"].height == PARENT_HEIGHT - ROW - GAP
-    assert packed["G"].height == GRANDPARENT_HEIGHT - (ROW + GAP)
-    assert packed["S"].height == before["S"][1] - (ROW + GAP)
-    assert packed["H"].y == before["H"][0] - (ROW + GAP)
+    assert packed["P"].height == pytest.approx(PARENT_HEIGHT - ROW - GAP)
+    assert packed["G"].height == pytest.approx(GRANDPARENT_HEIGHT - (ROW + GAP))
+    assert packed["S"].height == pytest.approx(before["S"][1] - (ROW + GAP))
+    assert packed["H"].y == pytest.approx(before["H"][0] - (ROW + GAP))
     assert packed["B"].y == before["A"][0]  # B still takes A's slot (reflow kept)
 
 
@@ -127,7 +129,7 @@ def test_a_tie_on_the_top_edge_keeps_document_order() -> None:
     layouts["B"].y = top
     assert resolve_overlaps(tree, layouts, parent="P") is True
     assert layouts["A"].y == top
-    assert layouts["B"].y == top + ROW + GAP
+    assert layouts["B"].y == pytest.approx(top + ROW + GAP)
 
 
 def test_the_same_rule_mirrors_when_b_is_first() -> None:
@@ -136,7 +138,7 @@ def test_the_same_rule_mirrors_when_b_is_first() -> None:
     layouts["A"].y = top
     assert resolve_overlaps(tree, layouts, parent="P") is True
     assert layouts["A"].y == top
-    assert layouts["B"].y == top + ROW + GAP
+    assert layouts["B"].y == pytest.approx(top + ROW + GAP)
 
 
 def test_a_card_dropped_back_into_its_own_slot_does_not_grow_the_boxes() -> None:
@@ -158,10 +160,10 @@ def test_a_stack_that_sticks_out_grows_the_boxes_and_pushes_the_cards_below() ->
     layouts["A"].y = layouts["B"].y
     assert resolve_overlaps(tree, layouts, parent="P") is True
     grown = ROW + GAP  # one row plus the sibling gap
-    assert layouts["P"].height == before["P"][1] + grown
-    assert layouts["G"].height == before["G"][1] + grown
-    assert layouts["S"].height == before["S"][1] + grown
-    assert layouts["H"].y == before["H"][0] + grown
+    assert layouts["P"].height == pytest.approx(before["P"][1] + grown)
+    assert layouts["G"].height == pytest.approx(before["G"][1] + grown)
+    assert layouts["S"].height == pytest.approx(before["S"][1] + grown)
+    assert layouts["H"].y == pytest.approx(before["H"][0] + grown)
 
 
 def test_free_cards_may_sit_on_each_other() -> None:

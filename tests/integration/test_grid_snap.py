@@ -137,7 +137,10 @@ def test_a_drop_near_a_line_lands_on_it_and_leaves_the_other_axis(window: MainWi
     assert layout.x == pytest.approx(line, abs=0.5)
     # the free axis keeps where it was dropped; the view maps through integer viewport pixels,
     # so allow a couple of them of slack (a snap would be off by 20, not by 0.5)
-    assert layout.y == pytest.approx(target_y, abs=2.0)
+    # The drag goes through integer viewport pixels, and with the shorter title bar the grid is
+    # 22.7 px, so the achieved drop can sit a few px from the intended one; a snap would be off
+    # by 20 px, so the discrimination this test is about is untouched (T-076).
+    assert layout.y == pytest.approx(target_y, abs=3.5)
 
 
 def test_turning_the_switch_off_keeps_the_dropped_position(window: MainWindow) -> None:

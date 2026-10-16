@@ -115,7 +115,13 @@ def test_a_childless_card_is_exactly_its_measured_body(window: MainWindow) -> No
         measured = item.measured_body_height()
         if measured is None:
             continue
-        expected = HEADER_HEIGHT + 2 * PADDING + measured
+        # The primary invariant: the item is exactly as tall as the layout reserved (T-076).
+        layout = window.session.layouts[item.card.card_id]
+        assert item.card_height == pytest.approx(layout.height, abs=0.01)
+        # The reservation relation, floored by the layout's own minimum (which binds now that
+        # the title bar is shorter than when MIN_HEIGHT was chosen) and with room for the
+        # re-measure noise below.
+        expected = max(HEADER_HEIGHT + 2 * PADDING + measured, LinearLayoutOptions().min_height)
         assert item.card_height == pytest.approx(expected, abs=0.5), title
 
 
