@@ -191,3 +191,27 @@ REQUIRED_SELECTORS = (
     "QPushButton",
     "QTreeWidget",
 )
+
+
+def test_qt_can_parse_the_stylesheet(window: MainWindow) -> None:
+    """A sheet Qt silently rejects is worse than no sheet: the chrome falls back to the OS (T-079).
+
+    Qt reports a malformed sheet only through qWarning("Could not parse stylesheet"), so the pixels
+    stay "styled-looking" in the source while the running app is unstyled. Catch it here instead.
+    """
+    from PySide6.QtCore import qInstallMessageHandler
+
+    messages: list[str] = []
+
+    def _collect(_mode, _context, message: str) -> None:  # noqa: ANN001
+        messages.append(message)
+
+    previous = qInstallMessageHandler(_collect)
+    try:
+        window.apply_theme(ThemeMode.LIGHT, remember=False)
+        QApplication.processEvents()
+    finally:
+        qInstallMessageHandler(previous)
+
+    offenders = [m for m in messages if "parse stylesheet" in m.lower()]
+    assert not offenders, f"Qt rejected the stylesheet: {offenders}"
