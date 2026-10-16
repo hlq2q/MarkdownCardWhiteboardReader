@@ -212,8 +212,24 @@ def system_is_dark() -> bool:
     return bool(scheme() == Qt.ColorScheme.Dark)
 
 
+def content_palette(palette: Palette, kind: CardKind) -> Palette:
+    """The palette a card's *content* is drawn with.
+
+    The same as ``palette`` except for ``[TOC]``, whose dark fill would swallow the light theme's
+    dark text: its header, body text, links and code all come from ``DARK`` so the card stays
+    readable in both themes (T-074).
+    """
+    return DARK if kind is CardKind.TOC else palette
+
+
 def card_fill(palette: Palette, kind: CardKind) -> str:
-    """The fill of one card kind (spec §1: heading, code/image, table, rest)."""
+    """The fill of one card kind (spec §1: heading, code/image, table, rest).
+
+    ``[TOC]`` is deliberately the *dark* fill in both themes (T-074): the table of contents is a
+    navigation surface, and the user asked for it to read as dark whatever the theme is.
+    """
+    if kind is CardKind.TOC:
+        return DARK.card_bg
     if kind is CardKind.HEADING:
         return palette.heading_card_bg
     if kind is CardKind.CODE or kind is CardKind.IMAGE:
