@@ -70,8 +70,8 @@ def test_hit_testing_stays_tight(window: MainWindow) -> None:
     """The paint margin must not make a card grabbable from outside its box (T-081).
 
     Asserted behaviourally: a point inside the box is in the shape, a point inside the paint margin
-    (1.5 px outside the box) is not. Comparing ``shape().boundingRect()`` exactly would trip over the
-    rounded corners.
+    (1.5 px outside the box) is not. Comparing ``shape().boundingRect()`` exactly would trip
+    over the rounded corners.
     """
     for item in window.card_items.values():
         wide, high = item.card_width, item.card_height
