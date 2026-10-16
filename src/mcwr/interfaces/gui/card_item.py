@@ -13,6 +13,7 @@ repaints: it never rebuilds the item and never touches a ``CardLayout`` (T-024 a
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Final
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -80,6 +81,11 @@ KIND_GLYPH: dict[CardKind, str] = {
 """Card type is carried by a glyph, never by colour alone (visual spec §6)."""
 
 
+PAINT_MARGIN: Final[float] = 2.0
+"""How far a card paints outside its box: the shadow (0.5 px), the selection outline
+(0.75 px) and an antialiasing fringe (T-081)."""
+
+
 class CardItem(QGraphicsObject):
     """Paints one card: frame, header with kind glyph, and its own (direct) content."""
 
@@ -141,7 +147,22 @@ class CardItem(QGraphicsObject):
     # ------------------------------------------------------------------ geometry
 
     def boundingRect(self) -> QRectF:
-        return QRectF(0.0, 0.0, self._width, self._height)
+        """The area the card may paint into: its box plus the overshoot (T-081).
+
+        The shadow is drawn one pixel below the frame and the selection outline sits outside it,
+        and the antialiased corners bleed a fraction further. Qt repaints a moved item through
+        this rect (DeviceCoordinateCache plus SmartViewportUpdate in the view), so anything
+        painted outside it is left behind as a thin smear until a pan or a zoom forces a full
+        repaint -- exactly the trail the user saw while dragging.
+        """
+        margin = PAINT_MARGIN
+        return QRectF(-margin, -margin, self._width + 2 * margin, self._height + 2 * margin)
+
+    def shape(self) -> QPainterPath:
+        """Hit-testing stays tight: the margin above is for repainting, not grabbing (T-081)."""
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0.0, 0.0, self._width, self._height), CARD_RADIUS, CARD_RADIUS)
+        return path
 
     @property
     def is_movable(self) -> bool:
