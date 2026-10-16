@@ -113,3 +113,28 @@ def test_the_toc_card_paints_dark(window: MainWindow) -> None:
     assert colour.lightnessF() < 0.4, (
         f"the [TOC] card fill is light ({colour.name()}); it must stay dark in every theme (T-074)"
     )
+
+
+def test_hovering_the_toc_card_keeps_it_dark(window: MainWindow) -> None:
+    """The light theme's hover fill must not flash the dark [TOC] card light (T-075)."""
+    item = next(i for i in window.card_items.values() if i.card.kind is CardKind.TOC)
+
+    rest = QColor(item._fill(LIGHT))
+    assert rest.lightnessF() < 0.4, f"the TOC card's rest fill is light ({rest.name()})"
+
+    item._hovered = True
+    try:
+        hovered = QColor(item._fill(LIGHT))
+    finally:
+        item._hovered = False
+    assert hovered.lightnessF() < 0.4, (
+        f"hovering paints the TOC card {hovered.name()} -- the dark card flashes light under the "
+        "cursor because the hover fill came from the light theme (T-075)"
+    )
+
+    item._dragging = True
+    try:
+        dragged = QColor(item._fill(LIGHT))
+    finally:
+        item._dragging = False
+    assert dragged.lightnessF() < 0.4, f"dragging paints the TOC card {dragged.name()} (T-075)"

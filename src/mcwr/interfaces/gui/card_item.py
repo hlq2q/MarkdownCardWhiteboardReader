@@ -437,7 +437,12 @@ class CardItem(QGraphicsObject):
         widget: QWidget | None = None,
     ) -> None:
         del widget
-        palette = self._palette
+        system_palette = self._palette
+        # Everything drawn *on* the card uses the content palette: a [TOC] card is dark in every
+        # theme, so its fill, header text, badge, border and depth bar have to be dark too --
+        # otherwise hovering it in the light theme flashes it light (T-075). The shadow still
+        # follows the *application* theme.
+        palette = content_palette(self._palette, self.card.kind)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         reduced = self.uses_reduced_detail(painter.transform().m11())
         fill = QColor(self._fill(palette))
@@ -450,7 +455,7 @@ class CardItem(QGraphicsObject):
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
-        if uses_shadow(palette.theme):
+        if uses_shadow(system_palette.theme):
             painter.setBrush(QBrush(QColor(*SHADOW_RGBA)))
             painter.drawRoundedRect(frame.translated(0.0, 1.0), CARD_RADIUS, CARD_RADIUS)
 
@@ -501,11 +506,16 @@ class CardItem(QGraphicsObject):
         return self._width * scale < MIN_LEGIBLE_ON_SCREEN_WIDTH
 
     def _fill(self, palette: Palette) -> str:
-        """Dragging wins over hovering, hovering over the kind's own fill (spec §4)."""
+        """Dragging wins over hovering, hovering over the kind's own fill (spec §4).
+
+        The state colours come from the content palette too: ``[TOC]`` is dark in every theme, so
+        the light theme's hover fill would flash it light under the cursor (T-075).
+        """
+        content = content_palette(palette, self.card.kind)
         if self._dragging:
-            return palette.drag
+            return content.drag
         if self._hovered:
-            return palette.hover
+            return content.hover
         return card_fill(palette, self.card.kind)
 
     # ----------------------------------------------------------------- item hooks
