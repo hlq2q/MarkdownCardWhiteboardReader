@@ -21,6 +21,7 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QLinearGradient,
     QPainter,
     QPainterPath,
     QPalette,
@@ -56,6 +57,7 @@ from mcwr.interfaces.gui.theme import (
     MIN_LEGIBLE_ON_SCREEN_WIDTH,
     PADDING,
     SELECTED_WIDTH,
+    SHADOW_DEPTH,
     SHADOW_RGBA,
     UI_FONT,
     UI_FONT_FALLBACK,
@@ -477,8 +479,7 @@ class CardItem(QGraphicsObject):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
         if uses_shadow(system_palette.theme):
-            painter.setBrush(QBrush(QColor(*SHADOW_RGBA)))
-            painter.drawRoundedRect(frame.translated(0.0, 1.0), CARD_RADIUS, CARD_RADIUS)
+            _draw_inner_shadow(painter, frame)
 
         painter.setBrush(QBrush(fill))
         painter.drawRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
@@ -633,6 +634,30 @@ def _stylesheet(palette: Palette) -> str:
         f"h1, h2, h3, h4, h5, h6 {{ color: {palette.text_primary}; }} "
         f"th, td {{ color: {palette.text_primary}; }}"
     )
+
+
+def _draw_inner_shadow(painter: QPainter, frame: QRectF) -> None:
+    """A bottom edge that fades upward, clipped inside the card's rounded outline (T-082).
+
+    The previous shadow was ``frame.translated(0, 1)``: it protruded half a pixel below the card,
+    i.e. outside ``boundingRect()``. Qt repaints a moved item only through that rect, so the
+    protrusion stayed behind as the drag trail the user reported (measured: an unselected card put
+    1898 px outside its box, all of them this shadow). Painting it inside keeps the "resting on
+    something" cue and guarantees nothing is drawn outside the box at all.
+    """
+    gradient = QLinearGradient(0.0, frame.bottom() - SHADOW_DEPTH, 0.0, frame.bottom())
+    gradient.setColorAt(0.0, QColor(*SHADOW_RGBA[:3], 0))
+    gradient.setColorAt(1.0, QColor(*SHADOW_RGBA))
+    outline = QPainterPath()
+    outline.addRoundedRect(frame, CARD_RADIUS, CARD_RADIUS)
+    painter.save()
+    painter.setClipPath(outline)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(gradient))
+    painter.drawRect(
+        QRectF(frame.left(), frame.bottom() - SHADOW_DEPTH, frame.width(), SHADOW_DEPTH)
+    )
+    painter.restore()
 
 
 def _draw_depth_bar(
