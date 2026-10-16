@@ -7,12 +7,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Final, cast
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
+    QColor,
     QContextMenuEvent,
+    QIcon,
     QKeySequence,
+    QPainter,
+    QPen,
     QPixmap,
     QResizeEvent,
 )
@@ -22,6 +26,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
@@ -249,6 +254,13 @@ class MainWindow(QMainWindow):
 
     def _apply_window_palette(self, palette: Palette) -> None:
         """Chrome colours: window, toolbar, status bar, the outline dock and its widgets."""
+        for button, kind in (
+            (getattr(self, "_outline_float_button", None), "float"),
+            (getattr(self, "_outline_close_button", None), "close"),
+        ):
+            if button is not None:
+                button.setIcon(_chrome_icon(palette, kind))
+                button.setIconSize(QSize(16, 16))
         self.setStyleSheet(
             # Every widget the chrome uses, styled from the palette: anything left out keeps the
             # *operating system's* QPalette, which is how a light app on a dark Windows turned its
@@ -466,6 +478,34 @@ class MainWindow(QMainWindow):
                 shorten(f"{query}：第 {position} 个命中（{hit.matches} 处）· 已定位 {hit.title}")
             )
 
+    def _build_outline_title(self, dock: QDockWidget) -> QWidget:
+        """Our own dock title bar: label plus two palette-drawn buttons (T-080).
+
+        ``setTitleBarWidget`` hands the strip to us, so the float and close glyphs are painted from
+        ``text_primary`` instead of the style's near-white ones, and both stay legible in either
+        theme. The icons themselves are (re)built in ``_apply_window_palette``.
+        """
+        bar = QWidget(dock)
+        bar.setObjectName("outlineTitle")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(8, 2, 4, 2)
+        layout.setSpacing(2)
+        layout.addWidget(QLabel("大纲", bar))
+        layout.addStretch(1)
+        self._outline_float_button = QToolButton(bar)
+        self._outline_float_button.setObjectName("outlineFloat")
+        self._outline_float_button.setToolTip("窗口化 / 重新停靠")
+        self._outline_float_button.setAutoRaise(True)
+        self._outline_float_button.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
+        self._outline_close_button = QToolButton(bar)
+        self._outline_close_button.setObjectName("outlineClose")
+        self._outline_close_button.setToolTip("关闭大纲")
+        self._outline_close_button.setAutoRaise(True)
+        self._outline_close_button.clicked.connect(dock.hide)
+        for button in (self._outline_float_button, self._outline_close_button):
+            layout.addWidget(button)
+        return bar
+
     def _build_outline(self) -> None:
         """The dockable heading tree of V1.1 (T-020/T-032: a dockable, collapsible side panel).
 
@@ -482,6 +522,7 @@ class MainWindow(QMainWindow):
 
         dock = QDockWidget("大纲", self)
         dock.setObjectName("outlineDock")
+        dock.setTitleBarWidget(self._build_outline_title(dock))
         dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
@@ -1118,6 +1159,32 @@ class MainWindow(QMainWindow):
         fold = menu.addAction("折叠 / 展开")
         fold.setEnabled(bool(tree.cards[card_id].child_ids))
         fold.triggered.connect(lambda: self.session.fold(card_id))
+
+
+def _chrome_icon(palette: Palette, kind: str) -> QIcon:
+    """A dock-title glyph drawn from the palette (T-080).
+
+    Qt's own dock buttons paint their glyph with the *style's* colours: on the light title bar they
+    come out near-white and vanish (the user's screenshot). Drawing them here keeps them on the
+    palette, exactly like the card's depth bar and its pending badge.
+    """
+    size = 16
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    pen = QPen(QColor(palette.text_primary), 1.6)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    margin = 4.5
+    if kind == "close":
+        painter.drawLine(QPointF(margin, margin), QPointF(size - margin, size - margin))
+        painter.drawLine(QPointF(size - margin, margin), QPointF(margin, size - margin))
+    else:  # float / redock
+        painter.drawRect(QRectF(margin, margin, size - 2 * margin, size - 2 * margin))
+        painter.drawLine(QPointF(margin, margin + 3.0), QPointF(size - margin, margin + 3.0))
+    painter.end()
+    return QIcon(pixmap)
 
 
 def _action(window: MainWindow, text: str, shortcut: str, slot: Callable[[], None]) -> QAction:

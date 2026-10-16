@@ -12,7 +12,10 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication,
+    QToolButton,
+)
 
 from mcwr.domain.models import CardKind
 from mcwr.interfaces.gui.main_window import MainWindow
@@ -215,3 +218,30 @@ def test_qt_can_parse_the_stylesheet(window: MainWindow) -> None:
 
     offenders = [m for m in messages if "parse stylesheet" in m.lower()]
     assert not offenders, f"Qt rejected the stylesheet: {offenders}"
+
+
+def test_the_dock_title_buttons_are_visible(window: MainWindow) -> None:
+    """The float/close glyphs must be drawn from the palette, not by the style (T-080).
+
+    They used to be near-white on the light title bar: the buttons were there, the glyphs were not.
+    """
+    from PySide6.QtCore import QPoint
+
+    window.apply_theme(ThemeMode.LIGHT, remember=False)
+    for _ in range(3):
+        QApplication.processEvents()
+    image = window.grab().toImage()
+    for name in ("outlineFloat", "outlineClose"):
+        button = window.findChild(QToolButton, name)
+        assert button is not None, f"{name} is missing"
+        origin = button.mapTo(window, QPoint(0, 0))
+        ink = 0
+        for y in range(max(origin.y(), 0), min(origin.y() + button.height(), image.height())):
+            for x in range(max(origin.x(), 0), min(origin.x() + button.width(), image.width())):
+                colour: QColor = image.pixelColor(x, y)
+                if colour.lightnessF() < 0.55:  # clearly darker than the light title bar
+                    ink += 1
+        assert ink >= 6, (
+            f"{name} draws (almost) no glyph: {ink} dark pixels -- the icon is probably still the "
+            "style's near-white one (T-080)"
+        )
