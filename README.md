@@ -23,7 +23,6 @@
 | 超限降级（D-029） | ✅ | 超限后零离屏渲染、公式按原文绘制、状态栏与日志各一次提示；`tests/integration/test_card_limit.py` 4 项 |
 | 目录卡片点击跳转（FR-2.4） | ✅ | `[TOC]` 处生成可点击条目（全部 H1–H6）；`tests/integration/test_toc_navigation.py` 5 项：真点击 → 目标卡居中并高亮、折叠祖先逐级展开、链接点击不拖动卡片 |
 | 代码卡语法高亮（T-029） | ✅ | Pygments（浅 `default` / 深 `monokai`）随主题切换；任一 token 颜色对代码底 <4.5:1 时回退到该主题 `text_secondary`；`pygments_highlighter.py` 8 项 + `test_code_highlight.py` 3 项（像素颜色数断言） |
-| 代码卡语法高亮（T-029） | ✅ | Pygments（浅 `default` / 深 `monokai`）随主题切换；任一 token 颜色对代码底 <4.5:1 时回退到该主题 `text_secondary`；`pygments_highlighter.py` 8 项 + `test_code_highlight.py` 3 项（像素颜色数断言） |
 | 打包（PyInstaller onedir） | ✅ | `packaging/mcwr.spec`；交付形态自检 `dist\mcwr\mcwr.exe --self-check` 退出码 0（frozen=true，5 卡、公式与 Mermaid 各出 1 图），bundle 574 MB |
 
 ## 运行
