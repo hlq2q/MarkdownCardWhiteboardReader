@@ -30,3 +30,7 @@ spikes/_out/
 
 # Inno Setup output (~150 MB): never commit the built installer (GitHub rejects >100 MB)
 packaging/Output/
+
+# Local-only scripts: never uploaded (user rule)
+Upload.bat
+Packaging.bat
