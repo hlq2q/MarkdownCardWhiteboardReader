@@ -138,11 +138,14 @@ echo       compiler "%ISCC%"
 
 rem ------------------------------------------------------------------ installer
 echo [5/5] Inno Setup: mcwr-setup-%APPVERSION%.exe
+echo       (about 2 minutes; ISCC rewrites one progress line in place, so seeing
+echo        'Preprocessing' just means it is still working - wait for [ok] or [x])
 if exist "packaging\Output" del /q "packaging\Output\mcwr-setup-*.exe" >nul 2>&1
 "%ISCC%" /Qp %FAST% /DAppVersion=%APPVERSION% /DAppVersionQuad=%APPVERSION%.0 "packaging\mcwr-installer.iss" || (
   echo [x] Inno Setup failed - see the messages above.
   goto :fail
 )
+echo.
 set "SETUP=packaging\Output\mcwr-setup-%APPVERSION%.exe"
 if not exist "%SETUP%" (
   echo [x] %SETUP% was not produced.
@@ -171,7 +174,7 @@ if not exist "%TARGET%\mcwr.exe" echo [verify] install + self-check + uninstall 
 
 :done
 echo.
-echo [ok] Packaging finished.
+echo [ok] Packaging SUCCEEDED - the installer is ready.
 echo      Installer: "%CD%\%SETUP%"
 echo      Re-run the same installer to upgrade an existing installation (the AppId is fixed).
 popd
@@ -179,6 +182,6 @@ exit /b 0
 
 :fail
 echo.
-echo [x] Packaging FAILED - nothing was installed.
+echo [x] Packaging FAILED - see the messages above.
 popd
 exit /b 1
