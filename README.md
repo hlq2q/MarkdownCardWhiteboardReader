@@ -69,39 +69,43 @@ python -m uv run ruff check . && python -m uv run ruff format --check .
 python -m uv run mypy src
 python -m uv run python spikes/spike_real_window.py          # 真实平台启动一次（1.5s 自动退出）
 
-# 底层打包步骤（一般不用手敲，见下一节的一键脚本）
+# 打包（底层步骤；完整流程见下一小节）
 python -m uv run pyinstaller packaging/mcwr.spec --noconfirm
 dist\mcwr\mcwr.exe --self-check                              # 返回码 0 = 打开+公式/Mermaid 出图正常
 $env:MCWR_SELF_CHECK_REPORT="$PWD\selfcheck.json"; dist\mcwr\mcwr.exe --self-check   # 报告落到文件
 ```
 
-## 打包成 setup.exe（`Packaging.bat`）
+## 打包成 setup.exe
 
-双击或在仓库根执行 `Packaging.bat`，它会依次做五件事，任一步失败立刻非零退出：
+安装包用 **Inno Setup 6** 编译 `packaging/mcwr-installer.iss`，产物是 `packaging\Output\mcwr-setup-<版本>.exe`。
+完整流程如下，任一步失败就停 —— 别让坏包进安装器：
 
-> **先关掉正在运行的 mcwr**：脚本开头有一道预检——检测到 `mcwr.exe` 还在运行就直接退出并提示（`Access is denied` 的成因见 `ERRORS.md` E-025：应用运行时 Windows 锁住了 `.venv\Scripts\mcwr.exe`，`uv sync` 换不掉它）。源码方式启动的窗口、`dist\mcwr\mcwr.exe`、已安装版本都算；`/nosync` 会跳过预检与同步。
+```powershell
+# 0) 先关掉正在运行的 mcwr：源码方式启动的窗口、dist\mcwr\mcwr.exe、已安装版本都算。
+#    应用运行时 Windows 会锁住 .venv\Scripts\mcwr.exe（成因见 ERRORS.md E-025），uv sync 换不掉它。
 
-1. **读版本**——从 `src/mcwr/__init__.py` 的 `__version__`，并与 `pyproject.toml` 的 `version` 交叉校验（不一致直接失败，避免打出错版本号的包）；
-2. `uv sync`；
-3. **PyInstaller onedir** 重建 `dist\mcwr\`（先清 `build\` 与 `dist\mcwr`）；
-4. **交付形态自检**——跑 `dist\mcwr\mcwr.exe --self-check`（真的打开文档、渲出公式与 Mermaid），非 0 就停，绝不让坏包进安装器；
-5. **Inno Setup** 编译 `packaging/mcwr-installer.iss` → 产出 **`packaging\Output\mcwr-setup-<版本>.exe`**。
+# 1) 版本号：src/mcwr/__init__.py 的 __version__ 要与 pyproject.toml 的 version 一致
+python -m uv run mcwr version
 
-```bat
-Packaging.bat                 :: 预检 + 完整流程（默认 lzma2/max，580 MB 压缩耗时较久）
-Packaging.bat /fast           :: 压缩换 lzma2/fast，体积大些但快很多（迭代用）
-Packaging.bat /nobuild        :: 复用现有 dist\mcwr，只重打安装包
-Packaging.bat /nosync         :: 跳过 uv sync（也跳过运行中预检）
-Packaging.bat /verify         :: 打完再静默装到临时目录、跑安装后 --self-check、再卸载
+# 2) 同步依赖
+python -m uv sync
+
+# 3) 重建冻结包（先清掉 build\ 与 dist\mcwr）
+python -m uv run pyinstaller packaging/mcwr.spec --noconfirm
+
+# 4) 交付形态自检：真的打开文档、渲出公式与 Mermaid，返回码非 0 就停下
+dist\mcwr\mcwr.exe --self-check
+
+# 5) 编译安装包（ISCC 装在别的目录就换成你自己的路径）
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+    /DAppVersion=0.1.0 /DAppVersionQuad=0.1.0.0 `
+    packaging\mcwr-installer.iss
 ```
 
-**项目改动后照旧可用**：版本不写死、路径全部相对脚本/`.iss` 自身（任意工作目录都能编译）、
-`ISCC.exe` 自动探测（`MCWR_ISCC` 环境变量 → `PATH` → 注册表 → 常见安装目录）。装完再跑一次新的 setup.exe
-就是**升级覆盖**（`AppId` 固定），不会在"应用和功能"里并排出现两份。
-
-> 成功判据：最后一行是 `[ok] Packaging finished.`（脚本退出码 0）。**从 PowerShell 里调用时不要看 `$?`/报错**：
-> uv 与 Chromium 会把正常信息写到 stderr，PowerShell 会把它当成错误显示；要拿真实退出码请用
-> `cmd /c "Packaging.bat ..."` 后看 `$LASTEXITCODE`（或直接双击运行）。
+- 版本不写死、路径全部相对 `.iss` 自身，任意工作目录都能编译；
+- 装完再跑一次新的 setup.exe 就是**升级覆盖**（`AppId` 固定），不会在"应用和功能"里并排出现两份；
+- **成功判据**：ISCC 最后一行是
+  `Successful compile (xx sec). Resulting Setup program filename is: ...`，且退出码为 0。
 
 安装形态与取舍：
 
