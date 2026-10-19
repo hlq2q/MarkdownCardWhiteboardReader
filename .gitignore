@@ -35,3 +35,14 @@ packaging/Output/
 Upload.bat
 Packaging.bat
 
+# Knowledge base (user rule 2026-10-19): local only, never uploaded
+AGENTS.md
+HANDOFF.md
+KB.md
+PROJECT_MAP.md
+TASKS.md
+DECISIONS.md
+ERRORS.md
+MODULE.md
+_recon/
+docs/uml/
